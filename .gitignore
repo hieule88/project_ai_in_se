@@ -1,0 +1,42 @@
+# ───────── Dependencies ─────────
+node_modules/
+**/node_modules/
+
+# ───────── Biến môi trường (CHỨA API KEY) — TUYỆT ĐỐI không commit ─────────
+.env
+.env.*
+!.env.example
+
+# ───────── Artifact sinh tự động ─────────
+# Kho vector RAG (build lại bằng: npm run build:rag) — nặng vì chứa embedding
+rag-index.json
+**/rag-index.json
+# Kết quả đánh giá (sinh lại bằng: npm run eval)
+eval-results.json
+**/eval-results.json
+# Vector store Chroma nếu chạy local
+chroma_db/
+*.chroma
+# Cache model embedding (@xenova/transformers tải về)
+.cache/
+**/.cache/
+
+# ───────── Build frontend ─────────
+web/dist/
+dist/
+*.local
+
+# ───────── Log & tạm ─────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ───────── OS / editor ─────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# GHI CHÚ: brands.json và user-components.json KHÔNG bị ignore —
+# đó là DỮ LIỆU (brand + component người dùng tạo), nên commit để giữ lại.

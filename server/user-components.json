@@ -1,0 +1,11 @@
+[
+  {
+    "id": "dong-ho-dem-nguoc",
+    "name": "Đồng hồ đếm ngược",
+    "description": "Đồng hồ đếm ngược sự kiện, countdown timer event days hours",
+    "tags": [
+      "countdown"
+    ],
+    "code": "<div class=\"cd\">⏳ 10:00:00</div><style>.cd{font-size:32px;text-align:center;padding:40px}</style>"
+  }
+]
