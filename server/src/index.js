@@ -4,7 +4,7 @@ import cors from 'cors';
 import { runGenerate, runEdit } from './pipeline.js';
 import { ParseError } from './parser.js';
 import { listBrands, createBrand } from './brands.js';
-import { addComponent, listAllComponents } from './rag/ingest.js';
+import { addComponent, updateComponent, removeComponent, listAllComponents } from './rag/ingest.js';
 
 const app = express();
 app.use(cors());
@@ -68,6 +68,27 @@ app.post('/api/components', async (req, res) => {
     const { name, description, tags, brand, code } = req.body || {};
     const item = await addComponent({ name, description, tags, brand, code });
     res.json({ id: item.id, name: item.name, tags: item.tags, brand: item.brand || '' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT /api/components/:id -> sửa component user (re-embed + upsert)
+app.put('/api/components/:id', async (req, res) => {
+  try {
+    const { name, description, tags, brand, code } = req.body || {};
+    const item = await updateComponent(req.params.id, { name, description, tags, brand, code });
+    res.json({ id: item.id, name: item.name, tags: item.tags, brand: item.brand || '' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/components/:id -> xóa component user (khỏi file + store)
+app.delete('/api/components/:id', async (req, res) => {
+  try {
+    await removeComponent(req.params.id);
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

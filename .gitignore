@@ -14,6 +14,11 @@ rag-index.json
 # Kết quả đánh giá (sinh lại bằng: npm run eval)
 eval-results.json
 **/eval-results.json
+eval-consistency-results.json
+**/eval-consistency-results.json
+# Trang HTML sinh ra để so sánh trực quan (npm run eval:consistency)
+eval-consistency/
+**/eval-consistency/
 # Vector store Chroma nếu chạy local
 chroma_db/
 *.chroma
@@ -40,3 +45,6 @@ Thumbs.db
 
 # GHI CHÚ: brands.json và user-components.json KHÔNG bị ignore —
 # đó là DỮ LIỆU (brand + component người dùng tạo), nên commit để giữ lại.
+
+docs/API_CONTRACT.md
+CLAUDE.md

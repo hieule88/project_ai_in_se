@@ -58,22 +58,29 @@ Response: `Brand` (kèm `id` sinh tự động).
 
 ## Component RAG (end-user tự thêm lúc chạy)
 
+CRUD component user (THÊM/SỬA/XÓA). Chỉ thao tác trên component user — component dựng sẵn chỉ đếm số, không sửa/xóa.
+
 ### GET /api/components
-Thống kê kho. Response:
+Thống kê kho + danh sách FULL component user (kèm `code` để UI sửa). Response:
 ```json
-{ "builtin": 33, "user": [ { "id": "my-pricing-vn", "name": "...", "tags": ["pricing"], "brand": "" } ] }
+{ "builtin": 33, "user": [ { "id": "my-pricing-vn", "name": "...", "description": "...", "tags": ["pricing"], "brand": "", "code": "<section>...</section>" } ] }
 ```
 
 ### POST /api/components
 Thêm 1 component → backend embed + upsert vào store ngay (không cần build lại).
 Lưu vào `user-components.json` nên sống sót qua restart và được `build:rag` gộp lại.
 
-Request:
-```json
-{ "name": "Bảng giá kiểu VN", "description": "mô tả giàu từ khóa...", "tags": ["pricing"], "brand": null, "code": "<section>...</section>" }
-```
-Response: `{ "id": string, "name": string, "tags": string[], "brand": string }`
+Request: `{ "name", "description", "tags": string[]|string, "brand": string|null, "code": string }`
+Response: `{ "id", "name", "tags": string[], "brand": string }`
 Lỗi 400 nếu thiếu `name`/`code` hoặc `code` không giống HTML.
+
+### PUT /api/components/:id
+Sửa 1 component user (re-embed + upsert theo id). Body như POST (các trường tùy chọn).
+Lỗi 400 nếu `id` là component dựng sẵn hoặc không tồn tại.
+
+### DELETE /api/components/:id
+Xóa 1 component user (khỏi file + store). Response `{ "ok": true }`.
+Lỗi 400 nếu `id` là component dựng sẵn hoặc không tồn tại.
 
 ## POST /api/edit
 Chỉnh sửa project hiện có. Backend trả về TOÀN BỘ files sau sửa.

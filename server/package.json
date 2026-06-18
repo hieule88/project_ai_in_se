@@ -12,7 +12,8 @@
     "test:rag": "node scripts/test-rag.js",
     "test:review": "node scripts/test-review.js",
     "test:brand": "node scripts/test-brand.js",
-    "eval": "node scripts/eval.js"
+    "eval": "node scripts/eval.js",
+    "eval:consistency": "node scripts/eval-consistency.js"
   },
   "dependencies": {
     "@xenova/transformers": "^2.17.2",

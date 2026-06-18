@@ -4,6 +4,24 @@ import { buildGenerateMessages, buildEditMessages, buildFixMessages, BRAND_LOGO_
 import { retrieveComponents, ragEnabled } from './rag/retrieve.js';
 import { reviewProject, summarizeIssues } from './review.js';
 import { getBrand } from './brands.js';
+import { DBEE_THEME } from './rag/dbeeTheme.js';
+
+/**
+ * Chèn CSS chuẩn DBEE vào CUỐI <head> để mọi class dbee-* có style cố định, đồng nhất
+ * giữa các trang (ổn định vibe). Đặt cuối head -> thắng nếu model lỡ viết CSS trùng class.
+ */
+function applyTheme(project) {
+  const block = `<style data-dbee-theme>\n${DBEE_THEME}\n</style>`;
+  project.files = project.files.map((f) => {
+    if (!/\.html$/i.test(f.path)) return f;
+    if (/data-dbee-theme/.test(f.content)) return f; // đã chèn rồi
+    const content = /<\/head>/i.test(f.content)
+      ? f.content.replace(/<\/head>/i, `${block}\n</head>`)
+      : `${block}\n${f.content}`;
+    return { ...f, content };
+  });
+  return project;
+}
 
 function reviewEnabled() {
   return process.env.REVIEW_ENABLED !== '0';
@@ -151,6 +169,9 @@ export async function runGenerate({ description, language = 'vi', brandId = null
 
   // 5) Chèn logo brand thật vào (thay placeholder) — sau review để fix không xoá mất.
   project = inlineBrandLogo(project, brand);
+
+  // 6) Chèn CSS chuẩn DBEE (khi có dùng RAG) → đồng nhất vibe giữa các trang.
+  if (retrievedComponents.length) project = applyTheme(project);
 
   return {
     ...project,

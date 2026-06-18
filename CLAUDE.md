@@ -51,7 +51,7 @@ Bước 2 (model thật): ✅ ĐÃ CHẠY THẬT — DashScope quốc tế, mode
 Bước 3 (Code RAG): ĐÃ DỰNG — kho ~30 component (`src/rag/`), embedding local miễn phí (đa ngôn ngữ), store memory/Chroma, đã nối vào `pipeline.js`.
 Bước 6 (Review Agent): ĐÃ DỰNG — soát HTML tĩnh (`src/review.js`) + tự sửa 1 vòng, nối vào generate & edit. Test: `npm run test:review`.
 Bước 7 (Cá nhân hóa brand): ĐÃ DỰNG — `src/brands.js` + `/api/brands`, component gắn brand + boost truy xuất, UI `BrandPanel.jsx`. Test: `npm run test:brand`.
-Mở rộng: end-user tự thêm component lúc chạy — `POST /api/components` (embed + upsert), lưu `user-components.json`, UI `ComponentPanel.jsx`. `build:rag` gộp built-in + user.
+Mở rộng: end-user tự quản lý component RAG lúc chạy — CRUD đầy đủ (`POST/PUT/DELETE /api/components`, embed + upsert/remove ngay), lưu `user-components.json`, UI `ComponentPanel.jsx` (danh sách Sửa/Xóa + xem trước trực tiếp). `build:rag` gộp built-in + user.
 Bước 4 (Đánh giá): bộ đo `scripts/eval.js` (`npm run eval`) ĐÃ DỰNG (so RAG on/off), chỉ còn chạy thật ở đợt cuối.
 Bước 8 (một phần): export `.zip` thật (jszip) + Monaco editor (local/offline) ĐÃ LÀM.
 Multi-agent còn lại (orchestrator/design) vẫn là stub.

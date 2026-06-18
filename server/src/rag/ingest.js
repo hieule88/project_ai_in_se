@@ -5,31 +5,54 @@
 import { embedTexts } from './embed.js';
 import { getStore } from './store.js';
 import { buildEmbedText, components as builtin } from './components.js';
-import { addUserComponent, listUserComponents } from './userComponents.js';
+import {
+  addUserComponent,
+  updateUserComponent,
+  deleteUserComponent,
+  listUserComponents,
+} from './userComponents.js';
 
-/**
- * Thêm 1 component và nạp ngay vào vector store (không cần build:rag lại).
- * @returns component đã chuẩn hóa (kèm id sinh tự động).
- */
-export async function addComponent(input) {
-  const item = addUserComponent(input); // validate + lưu user-components.json + sinh id
+/** Nạp 1 component vào vector store (embed + upsert). Báo lỗi rõ nếu chưa build:rag. */
+async function indexComponent(item) {
   try {
     const [embedding] = await embedTexts([buildEmbedText(item)]);
     await getStore().upsertItems([item], [embedding]);
   } catch (err) {
-    // Đã lưu vào file rồi; nếu store lỗi (vd chưa build:rag) thì báo rõ.
     throw new Error(
-      `Đã lưu component nhưng chưa nạp được vào store: ${err.message}. ` +
-        `Thử "npm run build:rag" để nạp lại toàn bộ.`
+      `Đã lưu vào file nhưng chưa nạp được vào store: ${err.message}. Thử "npm run build:rag" để nạp lại.`
     );
   }
+}
+
+/** Thêm component + nạp ngay vào store (không cần build:rag lại). */
+export async function addComponent(input) {
+  const item = addUserComponent(input); // validate + lưu + sinh id
+  await indexComponent(item);
   return item;
 }
 
-/** Thống kê kho: số built-in + danh sách component user (gọn, không kèm code). */
+/** Sửa component user + cập nhật store (upsert theo id, không cần build lại). */
+export async function updateComponent(id, input) {
+  const item = updateUserComponent(id, input);
+  await indexComponent(item);
+  return item;
+}
+
+/** Xóa component user khỏi file + store. */
+export async function removeComponent(id) {
+  const removed = deleteUserComponent(id); // ném lỗi nếu là built-in / không tồn tại
+  try {
+    await getStore().removeItems([id]);
+  } catch {
+    // store chưa build cũng không sao — đã xóa khỏi file, build:rag sau sẽ đồng bộ.
+  }
+  return removed;
+}
+
+/** Kho: số built-in + danh sách FULL component user (kèm code, để UI sửa). */
 export function listAllComponents() {
   return {
     builtin: builtin.length,
-    user: listUserComponents().map((c) => ({ id: c.id, name: c.name, tags: c.tags, brand: c.brand || '' })),
+    user: listUserComponents(),
   };
 }

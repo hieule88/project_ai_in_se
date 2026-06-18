@@ -53,6 +53,15 @@ const memoryStore = {
     return items.length;
   },
 
+  // Xóa theo id.
+  async removeItems(ids) {
+    const data = loadMemIndex();
+    const set = new Set(ids);
+    data.items = data.items.filter((it) => !set.has(it.id));
+    writeFileSync(INDEX_FILE, JSON.stringify(data));
+    _memCache = data;
+  },
+
   async query(embedding, k = 4, opts = {}) {
     const data = loadMemIndex();
     let pool = data.items;
@@ -138,6 +147,11 @@ const chromaStore = {
   // Chroma upsert vốn đã tăng dần → dùng lại addAll.
   async upsertItems(items, embeddings) {
     return this.addAll(items, embeddings);
+  },
+
+  async removeItems(ids) {
+    const col = await getChromaCollection();
+    await col.delete({ ids });
   },
 
   async query(embedding, k = 4, opts = {}) {

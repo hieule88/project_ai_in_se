@@ -20,25 +20,37 @@ export async function createBrand(payload) {
   return post('/api/brands', payload); // { name, colors, font, logo }
 }
 
-// ---- Component RAG (end-user tự thêm) ----
+// ---- Component RAG (end-user tự thêm / sửa / xóa) ----
 export async function listComponents() {
   const res = await fetch('/api/components');
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
-  return data; // { builtin: number, user: [{id,name,tags,brand}] }
+  return data; // { builtin: number, user: [{id,name,description,tags,brand,code}] }
 }
 
 export async function createComponent(payload) {
-  return post('/api/components', payload); // { name, description, tags, brand, code }
+  return request('POST', '/api/components', payload); // { name, description, tags, brand, code }
 }
 
-async function post(path, body) {
+export async function updateComponent(id, payload) {
+  return request('PUT', `/api/components/${encodeURIComponent(id)}`, payload);
+}
+
+export async function deleteComponent(id) {
+  return request('DELETE', `/api/components/${encodeURIComponent(id)}`);
+}
+
+function post(path, body) {
+  return request('POST', path, body);
+}
+
+async function request(method, path, body) {
   const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
-  return data; // { summary, entry, files, agentSteps, meta }
+  return data;
 }

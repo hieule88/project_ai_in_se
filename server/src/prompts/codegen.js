@@ -24,11 +24,24 @@ Ràng buộc kỹ thuật:
 - Code chạy được ngay, responsive cơ bản, KHÔNG để placeholder TODO.
 `.trim();
 
+/** Bỏ khối <style> khỏi snippet để model chỉ thấy CẤU TRÚC HTML (style do theme lo). */
+function stripStyle(code) {
+  return String(code)
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function buildGenerateMessages({ description, language = 'vi', retrievedComponents = [], brand = null }) {
   const ragBlock = retrievedComponents.length
-    ? `\nCác component tham khảo từ kho (ưu tiên TÁI SỬ DỤNG, giữ đúng phong cách):\n${retrievedComponents
-        .map((c, i) => `# Component ${i + 1}: ${c.name}\n${c.code}`)
-        .join('\n\n')}\n`
+    ? `\n=== DESIGN SYSTEM DBEE (BẮT BUỘC TUÂN THỦ ĐỂ ĐỒNG NHẤT GIAO DIỆN) ===
+- Dựng trang bằng cách RÁP các MẪU HTML dưới đây, DÙNG ĐÚNG các class "dbee-*".
+- Hệ thống ĐÃ gắn sẵn CSS chuẩn cho mọi class dbee-* (màu vàng #f2db45, cỡ chữ, bo góc, navbar, footer...).
+  => BẠN KHÔNG ĐƯỢC viết lại / đổi CSS cho bất kỳ class dbee-* nào. Chỉ thêm CSS cho bố cục đặc thù nếu thật cần.
+- Giữ nguyên cấu trúc/he class của mẫu; chỉ thay nội dung chữ cho phù hợp yêu cầu.
+
+Các MẪU HTML (chỉ cấu trúc, KHÔNG kèm style):
+${retrievedComponents.map((c) => `# ${c.name}\n${stripStyle(c.code)}`).join('\n\n')}\n`
     : '';
 
   return [
