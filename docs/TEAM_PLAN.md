@@ -1,8 +1,5 @@
 # TEAM_PLAN — Phân công & quy trình git (4 người · 3 ngày)
 
-> Kế hoạch để **mỗi người thật sự làm và commit phần của mình** bằng tên thật, qua nhánh + Pull Request.
-> Dự án thiết kế cho 4 vai P1–P4 (xem `docs/API_CONTRACT.md` — đây là "hợp đồng" giúp 4 người làm song song không kẹt nhau).
-
 ## 1. Phân công module (sở hữu file rõ ràng)
 
 | Người | Vai | Sở hữu file | Nhiệm vụ chính |
@@ -17,22 +14,22 @@
 ## 2. Nhánh & quy trình Pull Request
 
 ```
-main  ← chỉ merge qua PR đã được review
- ├─ feat/p1-ui
- ├─ feat/p2-pipeline
- ├─ feat/p3-rag
- └─ feat/p4-agents-eval
+main 
+ ├─ feat/ui
+ ├─ feat/pipeline
+ ├─ feat/rag
+ └─ feat/agents-eval
 ```
 
 Quy trình mỗi người:
 ```bash
 git checkout main && git pull
-git checkout -b feat/p3-rag          # nhánh của mình
+git checkout -b feat/rag          # nhánh của mình
 # ... code phần mình ...
 git add -A
 git commit -m "rag: thêm kho ~30 component + embedding local"
-git push -u origin feat/p3-rag
-# Mở Pull Request trên GitHub -> nhờ 1 người khác review -> merge vào main
+git push -u origin feat/rag
+# Mở Pull Request trên GitHub -> nhờ Pi+1 review (trong đó Pi là bạn, kiểm tra Pi hằng ngày trong doc https://docs.google.com/document/d/1-x9u9rCsbD8SoEQwrp-YOnC5pX4LIA8SBKNX1_FbrUc/edit?usp=sharing) -> merge vào main
 ```
 - Mỗi tính năng = **1 PR nhỏ**; người khác review chéo rồi mới merge.
 - Trước khi bắt phần mới: `git pull origin main` để đồng bộ.
@@ -72,14 +69,28 @@ Ví dụ: `rag: nối retrieveComponents vào pipeline` · `ui: thêm BrandPanel
 
 Cuối ngày 3: gộp hết về `main`, gắn tag `v1.0`.
 
-## 5. Điểm phụ thuộc (để không chặn nhau)
-- P1 chỉ cần **hợp đồng API** (P4 chốt ngày 1) → code UI với `MOCK_MODE=1`, không chờ P2/P3.
-- P3 cắm RAG qua `pipeline.js` — thống nhất với P2 chữ ký `retrieveComponents(...)`.
-- P4 chạy `eval` cần P2 (model thật) + P3 (RAG) xong → để **cuối ngày 3**.
-- Đổi interface → cập nhật `API_CONTRACT.md` trước, báo cả nhóm.
+## 4b. Phân công theo FILE cụ thể (theo ngày)
 
-## 6. Quy ước code chung (xem `CLAUDE.md`)
-- Backend ESM (`"type":"module"`), Node ≥18, **comment tiếng Việt**.
-- `pipeline.js` là nơi điều phối agent **duy nhất**.
-- Output model = **HTML/CSS/JS thuần, 1 file `/index.html` tự chứa**.
-- **KHÔNG commit `.env`** (đã chặn trong `.gitignore`).
+### Ngày 1 — Nền móng
+| Người | File commit | Commit |
+|---|---|---|
+| **P1** | `web/index.html`, `web/vite.config.js`, `web/package.json`, `web/tailwind.config.js`, `web/postcss.config.js`, `web/src/main.jsx`, `web/src/App.jsx`, `web/src/api.js`, `web/src/components/{ChatPanel,PreviewPanel,AgentSteps,CodeViewer}.jsx` | `ui: skeleton layout + chat + preview iframe` |
+| **P2** | `server/package.json`, `server/.env.example`, `server/src/index.js`, `server/src/qwenClient.js`, `server/src/parser.js`, `server/src/pipeline.js` (stub), `server/scripts/test-model.js` | `server: API + qwenClient(mock) + parser` |
+| **P3** | `server/src/rag/components.js`, `server/src/rag/embed.js`, `server/scripts/build-rag.js`, `server/scripts/test-rag.js` | `rag: kho component + embedding local` |
+| **P4** | `docs/API_CONTRACT.md`, `server/src/prompts/codegen.js`, `README.md`, `CLAUDE.md`, `.gitignore` | `docs: hợp đồng API` · `prompts: codegen` |
+
+### Ngày 2 — Tích hợp tính năng
+| Người | File commit | Commit |
+|---|---|---|
+| **P1** | `web/src/components/CodeViewer.jsx` (Monaco), `web/src/monacoSetup.js`, `web/src/components/BrandPanel.jsx`, `web/src/components/ComponentPanel.jsx`, `web/src/App.jsx` (gắn panel) | `ui: Monaco + Brand/Component panel` |
+| **P2** | `server/src/qwenClient.js` (hardening: max_tokens/timeout/json mode), `server/src/pipeline.js` (nối RAG/review/brand) | `server: model thật + hardening + wiring` |
+| **P3** | `server/src/rag/store.js`, `server/src/rag/retrieve.js`, `server/src/rag/ingest.js`, `server/src/rag/userComponents.js` | `rag: store + retrieve top-k + ingest CRUD` |
+| **P4** | `server/src/review.js`, `server/src/brands.js`, `server/src/prompts/codegen.js` (brand block + fix), `server/scripts/{test-review,test-brand}.js`, `server/src/index.js` (route brands/components) | `review + brand: agent + /api/brands` |
+
+### Ngày 3 — Design system, đánh giá, báo cáo
+| Người | File commit | Commit |
+|---|---|---|
+| **P1** | `web/src/App.jsx` (export `.zip` jszip), `web/package.json` (jszip/monaco), tinh chỉnh UX | `ui: export .zip + polish` |
+| **P2** | `server/src/parser.js` / `qwenClient.js` (bắt `finish_reason=length`); review PR các nhánh | `server: xử lý lỗi cắt cụt` |
+| **P3** | `server/src/rag/dbeeTheme.js`, `server/src/rag/components.js` (design system DBEE), `server/src/rag/retrieve.js` (brand boost) | `rag: design-system DBEE + theme` |
+| **P4** | `server/scripts/eval.js`, `server/scripts/eval-consistency.js`, `docs/REPORT.md`, `docs/{TEAM_PLAN,REVIEW_CHECKLIST}.md`, `.github/PULL_REQUEST_TEMPLATE.md` | `eval: B4 + consistency` · `docs: báo cáo` |
