@@ -14,24 +14,27 @@ import { mockProjectRaw } from './prompts/codegen.js';
  *   QWEN_TIMEOUT_MS   (mặc định 120000) — hủy request nếu model treo
  *   QWEN_JSON_MODE=1  — bật response_format json_object nếu provider hỗ trợ (DashScope/OpenRouter có)
  */
-export async function qwenChat(messages, { temperature = 0.2 } = {}) {
+export async function qwenChat(messages, { temperature = 0.2, model, baseUrl, apiKey } = {}) {
   if (process.env.MOCK_MODE === '1') {
     // Chạy thử không cần API key — trả về project mẫu sau ~300ms.
     await new Promise((r) => setTimeout(r, 300));
     return mockProjectRaw;
   }
 
-  const base = process.env.QWEN_BASE_URL?.replace(/\/$/, '');
-  if (!base) throw new Error('Thiếu QWEN_BASE_URL trong .env (hoặc đặt MOCK_MODE=1 để chạy mock)');
-  if (!process.env.QWEN_API_KEY) throw new Error('Thiếu QWEN_API_KEY trong .env');
-  if (!process.env.QWEN_MODEL) throw new Error('Thiếu QWEN_MODEL trong .env');
+  // Cho phép override (model/baseUrl/apiKey) để SO SÁNH NHIỀU MODEL; mặc định lấy từ .env.
+  const base = (baseUrl || process.env.QWEN_BASE_URL)?.replace(/\/$/, '');
+  const key = apiKey || process.env.QWEN_API_KEY;
+  const modelName = model || process.env.QWEN_MODEL;
+  if (!base) throw new Error('Thiếu base URL (QWEN_BASE_URL) — hoặc đặt MOCK_MODE=1 để chạy mock');
+  if (!key) throw new Error('Thiếu API key');
+  if (!modelName) throw new Error('Thiếu tên model');
   const url = `${base}/chat/completions`;
 
   const maxTokens = Number(process.env.QWEN_MAX_TOKENS) || 16000;
   const timeoutMs = Number(process.env.QWEN_TIMEOUT_MS) || 120000;
 
   const body = {
-    model: process.env.QWEN_MODEL,
+    model: modelName,
     temperature,
     max_tokens: maxTokens,
     messages,
@@ -51,7 +54,7 @@ export async function qwenChat(messages, { temperature = 0.2 } = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.QWEN_API_KEY}`,
+        Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify(body),
       signal: ctrl.signal,

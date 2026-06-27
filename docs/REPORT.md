@@ -46,7 +46,7 @@ offline khi demo).
                          │   2. RAG Agent  ──▶ rag/retrieve.js ──▶ vector store   │     │
                          │   3. Code Agent ──▶ qwenClient.js ──▶ Qwen3-Coder-Next │     │
                          │   4. Review Agent ─▶ review.js (+ tự sửa 1 vòng)       │     │
-                         │   5. Chèn logo brand                                  │     │
+                         │   5. Logo + theme DBEE                                  │     │
                          └───────────────────────────────────────────────────────┘     │
                          └────────────────────────────────────────────────────────────┘
 ```
@@ -222,8 +222,10 @@ Hàm `retrieveComponents({ description, brandId, k })`:
    - **Lọc theo brand:** không có brand → **chỉ lấy component dùng chung** (ẩn component riêng của brand khác);
      có brand → lấy **component dùng chung + component của đúng brand đó**.
    - Khi có brand, lấy dư (`fetchK = topK + 6`) để còn chỗ cho bước boost.
-5. **Cộng điểm ưu tiên brand:** mỗi hit thuộc đúng brand được cộng `RAG_BRAND_BOOST` (mặc định **+0.15**) vào điểm
-   tương đồng, rồi **sắp xếp lại** và cắt **top-k**. Nhờ vậy component thương hiệu được ưu tiên xuất hiện.
+5. **Cộng điểm ưu tiên brand (cơ chế có sẵn):** hit thuộc đúng brand được cộng `RAG_BRAND_BOOST` (mặc định **+0.15**)
+   rồi **sắp xếp lại** và cắt **top-k**. *Lưu ý:* kho hiện được làm **thuần DBEE (generic, không gắn brand)** để
+   *mọi prompt* đều ra vibe DBEE, nên bước boost/lọc-brand này **chưa kích hoạt thực tế** — nó sẵn sàng cho trường
+   hợp về sau muốn nhiều bộ component theo từng thương hiệu.
 6. Trả về danh sách `{ id, name, description, tags, code, score }`.
 
 > Đây chính là "logic RAG" cốt lõi: **embed truy vấn → tìm láng giềng gần nhất theo cosine → lọc/ưu tiên theo
@@ -257,8 +259,8 @@ Người dùng cuối có thể **Thêm/Sửa/Xóa** component ngay trong giao d
 
 ### 4.9 Cá nhân hóa thương hiệu (liên kết với RAG)
 Thương hiệu (`brands.js`, `/api/brands`) khai báo **màu chủ đạo, font, logo**. Khi chọn brand:
-- **Truy xuất:** ưu tiên component gắn brand (mục 4.6).
-- **Prompt:** nhồi khối nhận diện (màu/font) để mô hình áp dụng xuyên suốt.
+- **Prompt:** nhồi khối nhận diện (màu/font) để mô hình áp dụng xuyên suốt (đây là ảnh hưởng chính hiện nay).
+- **Truy xuất:** cơ chế ưu tiên component theo brand (mục 4.6) **sẵn sàng** nhưng chưa dùng vì kho hiện thuần DBEE.
 - **Logo ảnh:** không nhồi chuỗi base64 vào prompt (mô hình không chép lại được + tốn token + dễ cắt cụt);
   thay vào đó dùng **placeholder `__BRAND_LOGO__`**, rồi pipeline **thay bằng ảnh thật sau khi sinh**
   (`inlineBrandLogo`). Đây là một kỹ thuật xử lý tài nguyên nhị phân thông minh trong pipeline RAG.
@@ -280,29 +282,47 @@ tiến trình:
 
 ## 6. Đánh giá
 
-**Phương pháp:** bộ đo `scripts/eval.js` (`npm run eval`) chạy ~12 prompt đại diện qua pipeline ở **hai chế độ
-`RAG_ENABLED=1` và `=0`**, đo và **so sánh**:
-- Tỉ lệ thành công (HTML qua Review, `entry=/index.html`),
-- Độ trễ trung bình,
-- Số vòng sửa của Review,
-- Số cảnh báo, kích thước HTML, số component RAG truy xuất.
+Lưu ý quan trọng về **chọn chỉ số**: "tỉ lệ HTML hợp lệ" là ngưỡng quá dễ (mô hình nào cũng đạt ~100%) nên
+**không phân biệt** được RAG. Giá trị thật của RAG ở đây là **grounding** — trang sinh ra có **dùng lại
+component trong kho** hay không (RAG OFF không có component để dùng ⇒ grounding ≈ 0). Vì vậy bộ đo tập trung
+vào grounding và **tính nhất quán giao diện**.
+
+### 6.1 So sánh có/không RAG — `scripts/eval.js` (`npm run eval`)
+Chỉ dùng metric **có trong tài liệu** (paper Benchmark+Developer Study; bài "list of metrics" — bộ **RAGAS**).
+Chạy ~12 prompt qua pipeline ở **hai chế độ `RAG_ENABLED=1` và `=0`**, đo:
+- **Correctness** — HTML hợp lệ (`entry=/index.html`), tương ứng *runnable/functional correctness* + *syntax/format check*.
+- **Faithfulness (RAGAS)** — output **bám context**: số component kho **được tái dùng** (≥2 class CSS đặc trưng) và
+  **% component truy xuất thực sự được dùng** (chỉ RAG ON).
+- **Context Relevancy (RAGAS)** — độ liên quan TB của component **truy xuất** (điểm cosine; chất lượng retriever).
+- **Answer Relevancy (RAGAS)** — trang đáp ứng yêu cầu (đủ thành phần form/list/giá/ảnh/nav/CTA — *feature/keyword presence*).
 Kết quả lưu `eval-results.json`.
 
-**Kết quả (điền sau khi chạy thật):**
-
-| Chỉ số | RAG ON | RAG OFF |
+| Chỉ số (RAGAS / tài liệu) | RAG ON | RAG OFF |
 |---|---|---|
-| Tỉ lệ thành công | 【…】 | 【…】 |
-| Độ trễ TB (ms) | 【…】 | 【…】 |
-| Vòng sửa TB | 【…】 | 【…】 |
-| Cảnh báo TB | 【…】 | 【…】 |
-| Component RAG TB | 【~6】 | 0 |
+| Correctness — HTML hợp lệ | 【…】% | 【…】% |
+| Faithfulness — component tái dùng TB | 【…】 | 【~0】 |
+| Faithfulness — % component truy xuất được dùng | 【…】% | — |
+| Context Relevancy — điểm truy xuất TB | 【…】 | — |
+| Answer Relevancy — độ phủ yêu cầu | 【…】% | 【…】% |
 
-> 【Chèn 2–3 ảnh demo】: ví dụ landing page quán cà phê, trang bán hàng, và một trang có **brand** (logo + tông màu).
+> **Đọc kết quả:** Faithfulness cao ở ON và **≈0 ở OFF** ⇒ RAG thực sự định hướng đầu ra (grounding theo RAGAS).
 
-**Nhận định định tính:** RAG giúp đầu ra bám sát thư viện component (bố cục/phong cách nhất quán hơn), và khi
-chọn brand thì áp đúng nhận diện. Với truy vấn ghép nhiều ý, một số ý phụ có thể bị loãng — minh chứng đặc tính
-của truy xuất theo độ tương đồng (đã giảm thiểu bằng `top-k=6` và brand boost).
+### 6.2 Nhất quán phong cách đa trang — `scripts/eval-consistency.js` (`npm run eval:consistency`)
+Thí nghiệm bộc lộ RAG rõ nhất: sinh **2 trang khác nhau cùng site DBEE** — *trang chủ* và *lịch khai giảng* —
+ở cả ON/OFF (đều kèm brand DBEE), rồi đo **độ nhất quán giữa 2 trang** bằng metric **similarity** trong tài liệu:
+- **Text similarity (token overlap, kiểu token-set/Jaccard)** [article] trên tập class CSS — cao = cùng "bộ khung".
+- **Faithfulness (RAGAS)** — số component kho **dùng lại ở CẢ 2 trang** (cùng navbar/footer/nút…).
+
+| Chỉ số (nhất quán 2 trang) | RAG ON | RAG OFF |
+|---|---|---|
+| Text similarity — trùng class CSS (Jaccard) | 【…】% | 【…】% |
+| Faithfulness — component dùng chung cả 2 trang | 【…】 | 【~0】 |
+
+> **Đọc kết quả:** Text similarity & Faithfulness **cao ở RAG ON, thấp ở OFF** — đó là phần *chỉ RAG làm được*:
+> 2 trang dùng chung component + theme cố định ⇒ nhìn như **một website thống nhất**; RAG OFF thì bố cục rời rạc.
+> Script lưu 4 file `eval-consistency/{on,off}-{home,schedule}.html` để **chụp màn hình so sánh trực quan**.
+
+> 【Chèn ảnh】: đặt cạnh nhau on-home/on-schedule (đồng bộ) vs off-home/off-schedule (lệch) làm bằng chứng RAG.
 
 ---
 
@@ -322,7 +342,8 @@ cho phép mở rộng và làm việc nhóm thuận lợi.
 
 ### Phụ lục — Tệp/đường dẫn chính
 - Model: `server/src/qwenClient.js`, `prompts/codegen.js`, `parser.js`
-- RAG: `server/src/rag/{components,embed,store,retrieve,ingest,userComponents}.js`, `scripts/build-rag.js`
-- Agents/Brand/Eval: `server/src/{pipeline,review,brands}.js`, `scripts/eval.js`
-- Frontend: `web/src/App.jsx`, `web/src/components/*`
-- Hợp đồng & vận hành: `docs/API_CONTRACT.md`, `README.md`, `CLAUDE.md`
+- RAG: `server/src/rag/{components,embed,store,retrieve,ingest,userComponents,dbeeTheme}.js`, `scripts/build-rag.js`, `scripts/test-rag.js`
+- Agents/Brand: `server/src/{pipeline,review,brands}.js`, `scripts/{test-review,test-brand}.js`
+- Đánh giá: `server/scripts/eval.js`, `server/scripts/eval-consistency.js`
+- Frontend: `web/src/App.jsx`, `web/src/components/*` (gồm BrandPanel, ComponentPanel, CodeViewer/Monaco), `web/src/monacoSetup.js`
+- Hợp đồng & vận hành: `docs/API_CONTRACT.md`, `README.md`, `CLAUDE.md`, `docs/TEAM_PLAN.md`

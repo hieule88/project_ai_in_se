@@ -7,11 +7,12 @@
  *   - Giá trị thật của RAG là GROUNDING: trang sinh ra có DÙNG LẠI component trong kho không.
  *     RAG OFF không có component nào để dùng → grounding ≈ 0. Đây là điểm bộc lộ sức mạnh RAG.
  *
- * Chỉ số:
- *   1) Bám kho (component tái dùng TB): #component trong kho mà output dùng lại (>=2 class đặc trưng).
- *   2) Tỉ lệ component truy xuất được dùng (chỉ RAG ON): trong K component nhồi vào, bao nhiêu % được dùng.
- *   3) Độ phủ yêu cầu: trang có đủ thành phần mô tả yêu cầu (form/list/giá/ảnh/nav/cta) không.
- *   4) Hiệu quả (phụ): độ trễ, kích thước HTML.
+ * Chỉ số (chỉ dùng metric có trong tài liệu — paper Benchmark+Developer Study & bài "list of metrics"):
+ *   - Correctness (HTML hợp lệ)           : tính đúng/chạy được [paper] + syntax/format check [article].
+ *   - Faithfulness (RAGAS)                : output BÁM vào context (component truy xuất) — đo bằng #component tái dùng
+ *                                           và % component truy xuất thực sự được dùng (>=2 class đặc trưng).
+ *   - Context Relevancy (RAGAS)           : độ liên quan TB của component truy xuất (điểm cosine) — chất lượng retriever.
+ *   - Answer Relevancy (RAGAS)            : trang có đủ thành phần đáp ứng yêu cầu (keyword/feature presence [article]).
  *
  * ⚠️ Cần MOCK_MODE=0 (model thật) để có số liệu ý nghĩa.
  */
@@ -75,41 +76,41 @@ function countReused(comps, outClasses) {
 const LIBRARY = [...builtin, ...listUserComponents()];
 
 async function runOne(p, ragOn) {
-  const t0 = Date.now();
   let result, error = null;
   try {
     result = await runGenerate({ description: p.text, language: 'vi' });
   } catch (e) {
     error = e.message;
   }
-  const latencyMs = Date.now() - t0;
-  if (error) return { ok: false, latencyMs, htmlBytes: 0, coverage: 0, reusedLib: 0, reusedRetrievedRate: null, error };
+  if (error) return { ok: false, coverage: 0, reusedLib: 0, reusedRetrievedRate: null, contextRel: null, error };
 
   const index = result.files.find((f) => f.path === '/index.html') || result.files[0];
   const html = index ? index.content : '';
   const outClasses = classTokens(html);
 
-  // Độ phủ yêu cầu
+  // Answer Relevancy (RAGAS): trang có đủ thành phần yêu cầu mô tả
   const covered = p.need.filter((k) => SIGNAL[k]?.(html)).length;
   const coverage = p.need.length ? covered / p.need.length : 1;
 
-  // Bám kho (toàn bộ thư viện)
+  // Faithfulness (RAGAS): output bám vào kho — số component được tái dùng
   const reusedLib = countReused(LIBRARY, outClasses);
 
-  // Tỉ lệ component truy xuất được dùng (chỉ RAG ON)
+  // Faithfulness + Context Relevancy (chỉ RAG ON — cần tập truy xuất)
   let reusedRetrievedRate = null;
+  let contextRel = null;
   if (ragOn) {
     const retrieved = await retrieveComponents({ description: p.text });
     reusedRetrievedRate = retrieved.length ? countReused(retrieved, outClasses) / retrieved.length : 0;
+    // Context Relevancy (RAGAS): độ liên quan TB của component truy xuất (điểm cosine)
+    contextRel = retrieved.length ? retrieved.reduce((s, c) => s + (c.score || 0), 0) / retrieved.length : 0;
   }
 
   return {
-    ok: result.entry === '/index.html' && html.length > 200,
-    latencyMs,
-    htmlBytes: html.length,
+    ok: result.entry === '/index.html' && html.length > 200, // Correctness: HTML hợp lệ
     coverage,
     reusedLib,
     reusedRetrievedRate,
+    contextRel,
     error: null,
   };
 }
@@ -133,13 +134,12 @@ function agg(rows, ragOn) {
     successRate: (rows.filter((r) => r.ok).length / n) * 100,
     avgReusedLib: avg('reusedLib'),
     avgCoverage: avg('coverage') * 100,
-    avgLatency: avg('latencyMs'),
-    avgHtmlBytes: Math.round(avg('htmlBytes')),
   };
   if (ragOn) {
     const valid = rows.filter((r) => typeof r.reusedRetrievedRate === 'number');
-    out.avgReusedRetrieved =
-      (valid.reduce((s, r) => s + r.reusedRetrievedRate, 0) / (valid.length || 1)) * 100;
+    const k = valid.length || 1;
+    out.avgReusedRetrieved = (valid.reduce((s, r) => s + r.reusedRetrievedRate, 0) / k) * 100;
+    out.avgContextRel = valid.reduce((s, r) => s + (r.contextRel || 0), 0) / k;
   }
   return out;
 }
@@ -148,17 +148,16 @@ function table(on, off) {
   const f = (v, d = 2, suf = '') => `${v.toFixed(v % 1 === 0 ? 0 : d)}${suf}`;
   const pad = (s, w) => String(s).padEnd(w);
   const rows = [
-    ['Tỉ lệ thành công (HTML hợp lệ)', f(on.successRate, 0, '%'), f(off.successRate, 0, '%')],
-    ['★ Bám kho — component tái dùng TB', f(on.avgReusedLib), f(off.avgReusedLib)],
-    ['★ % component truy xuất được dùng', f(on.avgReusedRetrieved, 0, '%'), '—'],
-    ['Độ phủ yêu cầu TB', f(on.avgCoverage, 0, '%'), f(off.avgCoverage, 0, '%')],
-    ['Độ trễ TB (ms)', f(on.avgLatency), f(off.avgLatency)],
-    ['Kích thước HTML TB', f(on.avgHtmlBytes), f(off.avgHtmlBytes)],
+    ['Correctness — HTML hợp lệ', f(on.successRate, 0, '%'), f(off.successRate, 0, '%')],
+    ['Faithfulness — component tái dùng TB', f(on.avgReusedLib), f(off.avgReusedLib)],
+    ['Faithfulness — % component truy xuất được dùng', f(on.avgReusedRetrieved, 0, '%'), '—'],
+    ['Context Relevancy — điểm truy xuất TB', f(on.avgContextRel, 3), '—'],
+    ['Answer Relevancy — độ phủ yêu cầu', f(on.avgCoverage, 0, '%'), f(off.avgCoverage, 0, '%')],
   ];
   return [
-    `${pad('Chỉ số', 36)}${pad('RAG ON', 12)}RAG OFF`,
-    '─'.repeat(58),
-    ...rows.map(([k, a, b]) => `${pad(k, 36)}${pad(a, 12)}${b}`),
+    `${pad('Chỉ số (RAGAS / tài liệu)', 48)}${pad('RAG ON', 12)}RAG OFF`,
+    '─'.repeat(70),
+    ...rows.map(([k, a, b]) => `${pad(k, 48)}${pad(a, 12)}${b}`),
   ].join('\n');
 }
 
@@ -176,7 +175,7 @@ async function main() {
   const on = agg(onRows, true);
   const off = agg(offRows, false);
   console.log('\n' + table(on, off) + '\n');
-  console.log('★ = chỉ số bộc lộ giá trị RAG (grounding/tái sử dụng kho). Bám kho cao + OFF≈0 → RAG thực sự định hướng đầu ra.');
+  console.log('Faithfulness cao ở ON và ≈0 ở OFF → RAG thực sự định hướng đầu ra (grounding theo RAGAS).');
 
   const outFile = fileURLToPath(new URL('../eval-results.json', import.meta.url));
   writeFileSync(

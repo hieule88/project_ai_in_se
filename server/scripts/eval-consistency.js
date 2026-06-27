@@ -11,10 +11,9 @@
  *   - RAG mới làm 2 trang DÙNG CHUNG bộ component → cấu trúc/class CSS trùng nhau (như cùng 1 site).
  *     RAG OFF: mỗi trang tự bịa markup → cùng màu nhưng bố cục lệch → KHÔNG nhất quán.
  *
- * Chỉ số nhất quán giữa 2 trang:
- *   - Jaccard class CSS = |classes1 ∩ classes2| / |classes1 ∪ classes2|  (cao = nhất quán cấu trúc)
- *   - #component kho dùng lại ở CẢ 2 trang (chung "bộ khung" header/footer/card…)
- *   - Màu/font thương hiệu xuất hiện ở cả 2 trang (để thấy brand hoạt động ở cả 2 chế độ)
+ * Chỉ số (chỉ dùng metric có trong tài liệu):
+ *   - Text similarity (token overlap, kiểu token-set/Jaccard) [article] = |c1 ∩ c2| / |c1 ∪ c2| trên tập class CSS.
+ *   - Faithfulness (RAGAS): #component kho dùng lại ở CẢ 2 trang (chung "bộ khung" header/footer/card…).
  *
  * Ngoài ra lưu 4 file HTML ra server/eval-consistency/ để CHỤP MÀN HÌNH so sánh trực quan.
  *
@@ -84,24 +83,13 @@ async function runMode(ragOn, brand) {
   const r2 = reusedSet(c2);
   const sharedComps = [...r1].filter((id) => r2.has(id));
 
-  const primary = (brand?.colors?.primary || '').toLowerCase();
-  const font = (brand?.font || '').split(',')[0].trim().toLowerCase();
-  const colorBoth = primary && htmls.home.toLowerCase().includes(primary) && htmls.schedule.toLowerCase().includes(primary);
-  const fontBoth = font && htmls.home.toLowerCase().includes(font) && htmls.schedule.toLowerCase().includes(font);
-
   return {
-    jaccard: jaccard(c1, c2) * 100,
+    jaccard: jaccard(c1, c2) * 100, // Text similarity (token overlap) [article]
     reusedHome: r1.size,
     reusedSchedule: r2.size,
-    sharedComps: sharedComps.length,
+    sharedComps: sharedComps.length, // Faithfulness — component dùng chung cả 2 trang
     sharedIds: sharedComps,
-    colorBoth,
-    fontBoth,
   };
-}
-
-function yn(b) {
-  return b ? '✓' : '✗';
 }
 
 async function main() {
@@ -126,19 +114,17 @@ async function main() {
   const pad = (s, w) => String(s).padEnd(w);
   const f = (v) => `${v.toFixed(v % 1 === 0 ? 0 : 1)}`;
   const rows = [
-    ['★ Trùng lặp class CSS (Jaccard)', f(on.jaccard) + '%', f(off.jaccard) + '%'],
-    ['★ Component kho dùng lại ở CẢ 2 trang', f(on.sharedComps), f(off.sharedComps)],
-    ['Component dùng lại (trang chủ / lịch trình)', `${on.reusedHome}/${on.reusedSchedule}`, `${off.reusedHome}/${off.reusedSchedule}`],
-    ['Màu thương hiệu ở cả 2 trang', yn(on.colorBoth), yn(off.colorBoth)],
-    ['Font thương hiệu ở cả 2 trang', yn(on.fontBoth), yn(off.fontBoth)],
+    ['Text similarity — trùng class CSS (Jaccard)', f(on.jaccard) + '%', f(off.jaccard) + '%'],
+    ['Faithfulness — component dùng chung CẢ 2 trang', f(on.sharedComps), f(off.sharedComps)],
+    ['Faithfulness — component tái dùng (chủ / lịch trình)', `${on.reusedHome}/${on.reusedSchedule}`, `${off.reusedHome}/${off.reusedSchedule}`],
   ];
   console.log('\n' + `${pad('Chỉ số (nhất quán giữa 2 trang)', 44)}${pad('RAG ON', 10)}RAG OFF`);
   console.log('─'.repeat(64));
   for (const [k, a, b] of rows) console.log(`${pad(k, 44)}${pad(a, 10)}${b}`);
 
   console.log('\nKết luận mong đợi:');
-  console.log('  • Màu/font thương hiệu: ✓ ở CẢ ON/OFF (brand được nhồi prompt bất kể RAG).');
-  console.log('  • Jaccard & component-chung CAO ở RAG ON, THẤP ở RAG OFF → RAG tạo nhất quán CẤU TRÚC.');
+  console.log('  • Text similarity (Jaccard) & Faithfulness (component-chung) CAO ở RAG ON, THẤP ở OFF');
+  console.log('    → RAG tạo nhất quán giao diện giữa các trang (theo metric tài liệu).');
   if (on.sharedIds.length) console.log(`  • Component dùng chung (ON): ${on.sharedIds.join(', ')}`);
   console.log(`\n📂 Mở 4 file trong server/eval-consistency/ để chụp màn hình so sánh trực quan:`);
   console.log('   on-home.html · on-schedule.html · off-home.html · off-schedule.html');

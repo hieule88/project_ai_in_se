@@ -76,7 +76,7 @@ function restoreDataUris(files, map) {
  * Luôn TRẢ VỀ project (đã sửa nếu sửa được) và PUSH 1 agentStep 'review' vào `steps`.
  * Không bao giờ chặn pipeline — lỗi gọi model khi sửa cũng chỉ ghi chú rồi giữ bản gốc.
  */
-async function runReview(project, language, steps) {
+async function runReview(project, language, steps, llm = {}) {
   if (!reviewEnabled()) {
     steps.push({ agent: 'review', status: 'skipped', summary: 'Review tắt (REVIEW_ENABLED=0)' });
     return project;
@@ -98,7 +98,7 @@ async function runReview(project, language, steps) {
   // Gọi model sửa 1 vòng.
   try {
     const fixMessages = buildFixMessages({ files: project.files, issues: review.errors, language });
-    const fixed = parseProject(await qwenChat(fixMessages));
+    const fixed = parseProject(await qwenChat(fixMessages, llm));
     const after = reviewProject(fixed);
     if (after.ok) {
       steps.push({ agent: 'review', status: 'done', summary: `Phát hiện ${review.errors.length} lỗi → đã sửa 1 vòng, HTML hợp lệ` });
@@ -123,7 +123,7 @@ async function runReview(project, language, steps) {
  *
  * Mọi agent đều TRẢ VỀ kèm 1 phần tử agentSteps để frontend hiển thị tiến trình.
  */
-export async function runGenerate({ description, language = 'vi', brandId = null }) {
+export async function runGenerate({ description, language = 'vi', brandId = null, llm = {} }) {
   const t0 = Date.now();
   const steps = [];
 
@@ -160,12 +160,12 @@ export async function runGenerate({ description, language = 'vi', brandId = null
 
   // 3) Code Agent — thật.
   const messages = buildGenerateMessages({ description, language, retrievedComponents, brand });
-  const raw = await qwenChat(messages);
+  const raw = await qwenChat(messages, llm);
   let project = parseProject(raw);
   steps.push({ agent: 'code', status: 'done', summary: `Sinh ${project.files.length} file` });
 
   // 4) Review Agent — soát HTML, tự sửa 1 vòng nếu có lỗi.
-  project = await runReview(project, language, steps);
+  project = await runReview(project, language, steps, llm);
 
   // 5) Chèn logo brand thật vào (thay placeholder) — sau review để fix không xoá mất.
   project = inlineBrandLogo(project, brand);
