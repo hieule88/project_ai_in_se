@@ -48,11 +48,12 @@ cd web && npm install && npm run dev                              # http://local
 ## Trạng thái hiện tại
 Skeleton chạy end-to-end ở MOCK_MODE: mô tả → sinh HTML → preview iframe → chỉnh sửa.
 Bước 2 (model thật): ✅ ĐÃ CHẠY THẬT — DashScope quốc tế, model `qwen3-coder-next`, `npm run test:model` sinh được /index.html hợp lệ (~17s). Cấu hình ở `server/.env` (MOCK_MODE=0).
-Bước 3 (Code RAG): ĐÃ DỰNG — kho ~30 component (`src/rag/`), embedding local miễn phí (đa ngôn ngữ), store memory/Chroma, đã nối vào `pipeline.js`.
+Bước 3 (Code RAG): ĐÃ DỰNG — kho là **design-system DBEE** (16 component generic, class `dbee-*`, `src/rag/components.js`), embedding local miễn phí (đa ngôn ngữ), store memory/Chroma, nối `pipeline.js`. Để **ổn định vibe**: nhồi component đã BỎ `<style>` (model chỉ ráp HTML) + chèn **theme cố định** (`src/rag/dbeeTheme.js`) vào cuối `<head>` (`pipeline.applyTheme`).
 Bước 6 (Review Agent): ĐÃ DỰNG — soát HTML tĩnh (`src/review.js`) + tự sửa 1 vòng, nối vào generate & edit. Test: `npm run test:review`.
 Bước 7 (Cá nhân hóa brand): ĐÃ DỰNG — `src/brands.js` + `/api/brands`, component gắn brand + boost truy xuất, UI `BrandPanel.jsx`. Test: `npm run test:brand`.
 Mở rộng: end-user tự quản lý component RAG lúc chạy — CRUD đầy đủ (`POST/PUT/DELETE /api/components`, embed + upsert/remove ngay), lưu `user-components.json`, UI `ComponentPanel.jsx` (danh sách Sửa/Xóa + xem trước trực tiếp). `build:rag` gộp built-in + user.
-Bước 4 (Đánh giá): bộ đo `scripts/eval.js` (`npm run eval`) ĐÃ DỰNG (so RAG on/off), chỉ còn chạy thật ở đợt cuối.
+Bước 4 (Đánh giá): ĐÃ DỰNG, **chỉ dùng metric trong tài liệu (RAGAS)** — `npm run eval` (so RAG on/off: Correctness/Faithfulness/Context Relevancy/Answer Relevancy), `npm run eval:consistency` (nhất quán 2 trang DBEE: text-similarity Jaccard + Faithfulness), `npm run eval:models` (so nhiều LLM cùng pipeline+RAG). Còn chạy thật để điền số.
+So sánh nhiều model: `eval-models.config.js` — mỗi model `{model,baseUrl,apiKey,maxTokens,jsonMode,tokenParam,omitTemperature}`, **chỉ cần thêm API key vào `.env`** (Claude/OpenAI/Qwen/DeepSeek + free: OpenRouter qwen3-coder, Cerebras gpt-oss-120b, Gemini Flash). `qwenClient.js` hỗ trợ override per-model.
 Bước 8 (một phần): export `.zip` thật (jszip) + Monaco editor (local/offline) ĐÃ LÀM.
 Multi-agent còn lại (orchestrator/design) vẫn là stub.
 
@@ -61,10 +62,10 @@ Multi-agent còn lại (orchestrator/design) vẫn là stub.
 ### BẮT BUỘC (đủ để bảo vệ — làm trước)
 1. ✅ Skeleton (xong).
 2. ✅ **Nối model thật:** DashScope quốc tế + `qwen3-coder-next` (OpenAI-compatible), `npm run test:model` PASS. Endpoint/model đã kiểm chứng thật.
-3. ✅ **Code RAG cơ bản:** kho ~30 component (`src/rag/components.js`); embedding local (@xenova/transformers);
+3. ✅ **Code RAG cơ bản:** kho **design-system DBEE** (16 component, `src/rag/components.js`) + theme cố định (`dbeeTheme.js`); embedding local (@xenova/transformers);
    store memory mặc định + Chroma tùy chọn (`src/rag/store.js`); `retrieveComponents` top-k; đã nối vào `pipeline.js`.
    Build: `npm run build:rag`. Test (không tốn tiền): `npm run test:rag`.
-4. ◑ **Đánh giá nhẹ:** bộ đo ĐÃ DỰNG (`scripts/eval.js`, `npm run eval`) — ~12 prompt, đo thành công/độ trễ/vòng sửa/cảnh báo, **so RAG on/off**, lưu `eval-results.json`. Chỉ CÒN chạy thật với `MOCK_MODE=0` ở đợt cuối.
+4. ◑ **Đánh giá nhẹ:** ĐÃ DỰNG, **chỉ dùng metric trong tài liệu (RAGAS)** — `eval` (so RAG on/off), `eval:consistency` (nhất quán 2 trang), `eval:models` (so nhiều LLM, chỉ cần thêm API key). Chỉ CÒN chạy thật `MOCK_MODE=0` để điền số vào `REPORT.md`.
 5. **Báo cáo + demo:** chuẩn bị 2–3 prompt demo đã chạy ổn.
 
 ### NÊN CÓ (nếu còn thời gian)

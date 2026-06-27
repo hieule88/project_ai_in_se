@@ -60,4 +60,34 @@ export const MODELS = [
     maxTokens: 8192,
     jsonMode: true,
   },
+
+  // 5) Qwen3-Coder (FREE) qua OpenRouter — chỉ cần OPENROUTER_API_KEY. Free ~50 req/ngày.
+  {
+    label: `OpenRouter (${process.env.OPENROUTER_MODEL || 'qwen/qwen3-coder:free'})`,
+    model: process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_MODEL || 'qwen/qwen3-coder:free' : undefined,
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY,
+    maxTokens: 16000,
+    jsonMode: true,
+  },
+
+  // 6) Gemini Flash (FREE) qua Google AI Studio (endpoint OpenAI-compat). Free ~20 req/ngày.
+  {
+    label: `Gemini (${process.env.GEMINI_MODEL || 'gemini-2.5-flash'})`,
+    model: process.env.GEMINI_API_KEY ? process.env.GEMINI_MODEL || 'gemini-2.5-flash' : undefined,
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    apiKey: process.env.GEMINI_API_KEY,
+    maxTokens: 16000,
+    jsonMode: true,
+  },
+
+  // 7) gpt-oss-120b (FREE) qua Cerebras — limit cao, rất nhanh. Key: https://cloud.cerebras.ai
+  {
+    label: `Cerebras (${process.env.CEREBRAS_MODEL || 'gpt-oss-120b'})`,
+    model: process.env.CEREBRAS_API_KEY ? process.env.CEREBRAS_MODEL || 'gpt-oss-120b' : undefined,
+    baseUrl: 'https://api.cerebras.ai/v1',
+    apiKey: process.env.CEREBRAS_API_KEY,
+    maxTokens: 16000,
+    jsonMode: true, // nếu báo lỗi response_format → đổi thành false (parser tự bóc JSON)
+  },
 ].filter((m) => m.model && m.baseUrl && m.apiKey); // chỉ giữ model đã cấu hình đủ key+model

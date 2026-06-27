@@ -326,6 +326,27 @@ Thí nghiệm bộc lộ RAG rõ nhất: sinh **2 trang khác nhau cùng site DB
 
 ---
 
+### 6.3 So sánh nhiều model — `scripts/eval-models.js` (`npm run eval:models`)
+So nhiều LLM sinh mã trên **cùng pipeline + cùng RAG**, dùng đúng metric tài liệu (Correctness, Faithfulness,
+Answer Relevancy + tỉ lệ lỗi gọi model). Cấu hình ở `eval-models.config.js`: mỗi model khai báo
+`{model, baseUrl, apiKey, maxTokens, jsonMode, tokenParam, omitTemperature}` — **chỉ cần thêm API key vào `.env`**
+là model đó được so. Mọi model gọi qua **chuẩn OpenAI-compatible** (kể cả Claude qua endpoint compat của Anthropic,
+Gemini qua Google AI Studio); `qwenClient.js` hỗ trợ override tham số theo từng nhà cung cấp.
+
+Đã cấu hình sẵn (điền key để bật): **Claude Sonnet 4.6, GPT (OpenAI), Qwen3-Coder, DeepSeek**, và 3 model **free**
+khuyên dùng: **Qwen3-Coder** (OpenRouter), **gpt-oss-120b** (Cerebras), **Gemini Flash** (Google AI Studio).
+
+| Model | Correctness | Faithfulness | Answer Relevancy | Lỗi% |
+|---|---|---|---|---|
+| 【model 1】 | 【…】% | 【…】 | 【…】% | 【…】% |
+| 【model 2】 | 【…】% | 【…】 | 【…】% | 【…】% |
+| 【model 3】 | 【…】% | 【…】 | 【…】% | 【…】% |
+
+> Vì **tất cả chạy cùng RAG**, **Faithfulness** cho thấy model nào tận dụng RAG/design-system DBEE tốt nhất —
+> tách bạch năng lực *bám tri thức* khỏi năng lực *sinh thô*.
+
+---
+
 ## 7. Hạn chế & hướng phát triển
 - Truy vấn ghép nhiều ý có thể bỏ sót component phụ → có thể thử **re-ranking** hoặc tách truy vấn theo section.
 - Orchestrator/Design Agent hiện là stub → mở rộng thành đa tác tử đầy đủ (phân rã layout, agent thiết kế).
@@ -344,6 +365,6 @@ cho phép mở rộng và làm việc nhóm thuận lợi.
 - Model: `server/src/qwenClient.js`, `prompts/codegen.js`, `parser.js`
 - RAG: `server/src/rag/{components,embed,store,retrieve,ingest,userComponents,dbeeTheme}.js`, `scripts/build-rag.js`, `scripts/test-rag.js`
 - Agents/Brand: `server/src/{pipeline,review,brands}.js`, `scripts/{test-review,test-brand}.js`
-- Đánh giá: `server/scripts/eval.js`, `server/scripts/eval-consistency.js`
+- Đánh giá: `server/scripts/{eval,eval-consistency,eval-models}.js`, `server/eval-models.config.js` (so nhiều model — chỉ thêm API key)
 - Frontend: `web/src/App.jsx`, `web/src/components/*` (gồm BrandPanel, ComponentPanel, CodeViewer/Monaco), `web/src/monacoSetup.js`
 - Hợp đồng & vận hành: `docs/API_CONTRACT.md`, `README.md`, `CLAUDE.md`, `docs/TEAM_PLAN.md`

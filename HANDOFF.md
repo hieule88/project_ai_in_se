@@ -18,13 +18,17 @@ WebGen — trợ lý sinh web frontend (HTML/CSS/JS tự chứa) đa tác tử +
 - **CRUD component lúc chạy** (`/api/components` + ComponentPanel), lưu `user-components.json`.
 - **Đánh giá:** `eval`, `eval:consistency`, `eval:models` — **chỉ dùng metric trong tài liệu** (RAGAS:
   Faithfulness/Answer Relevancy/Context Relevancy + Correctness + text similarity). Đã bỏ latency/size/màu-font.
-- **Multi-model:** so sánh Claude Sonnet 4.6 / GPT / Qwen / DeepSeek qua OpenAI-compat (config: `eval-models.config.js`).
+- **Multi-model (`eval:models`):** so nhiều LLM cùng pipeline+RAG, metric RAGAS. Cấu hình `eval-models.config.js` —
+  mỗi model `{model,baseUrl,apiKey,maxTokens,jsonMode,tokenParam,omitTemperature}`, **chỉ cần thêm API key vào `.env`**.
+  Đã cấu hình sẵn: Claude Sonnet 4.6, GPT (OpenAI), Qwen (DashScope), DeepSeek, + **3 model free khuyên dùng**:
+  Qwen3-Coder (OpenRouter), gpt-oss-120b (Cerebras), Gemini Flash (Google AI Studio). `qwenClient.js` hỗ trợ override per-model.
 
 **Còn lại / next steps:**
-1. Chạy thật `npm run eval` + `eval:consistency` (+ `eval:models` khi có key) → điền số `【…】` trong `docs/REPORT.md` §6.
-2. Chụp 4 ảnh `eval-consistency/*.html` chèn báo cáo.
-3. Hoàn thiện báo cáo (8 trang) + chuẩn bị demo.
-4. Push lên `main` (đang ở nhánh `add-models`).
+1. Chạy thật `npm run eval` + `eval:consistency` → điền số `【…】` trong `docs/REPORT.md` §6.1/§6.2.
+2. Lấy key 3 model free (OpenRouter / Cerebras / Google AI Studio) → `npm run eval:models` → điền §6.3.
+3. Chụp 4 ảnh `eval-consistency/*.html` chèn báo cáo.
+4. Hoàn thiện báo cáo (8 trang) + chuẩn bị demo.
+5. Push lên `main` (đang ở nhánh `add-models`).
 
 ## 2. Bẫy/vận hành QUAN TRỌNG (đừng vấp lại)
 - **Chạy trên ổ Linux của WSL (`~/webgen-assistant`), KHÔNG phải `/mnt/c`.** Trên `/mnt/c`, `esbuild` (web) và
