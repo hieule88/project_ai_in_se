@@ -80,7 +80,15 @@ async function evalModel(cfg) {
   process.stdout.write(`\n[${cfg.label}] `);
   const rows = [];
   for (const p of PROMPTS) {
-    const m = await runOne(p, { model: cfg.model, baseUrl: cfg.baseUrl, apiKey: cfg.apiKey });
+    const m = await runOne(p, {
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      maxTokens: cfg.maxTokens,
+      jsonMode: cfg.jsonMode,
+      tokenParam: cfg.tokenParam,
+      omitTemperature: cfg.omitTemperature,
+    });
     rows.push(m);
     process.stdout.write(m.ok ? '.' : m.err ? '!' : 'x');
   }

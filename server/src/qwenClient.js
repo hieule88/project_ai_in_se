@@ -14,7 +14,10 @@ import { mockProjectRaw } from './prompts/codegen.js';
  *   QWEN_TIMEOUT_MS   (mặc định 120000) — hủy request nếu model treo
  *   QWEN_JSON_MODE=1  — bật response_format json_object nếu provider hỗ trợ (DashScope/OpenRouter có)
  */
-export async function qwenChat(messages, { temperature = 0.2, model, baseUrl, apiKey } = {}) {
+export async function qwenChat(
+  messages,
+  { temperature = 0.2, model, baseUrl, apiKey, maxTokens, jsonMode, tokenParam, omitTemperature } = {}
+) {
   if (process.env.MOCK_MODE === '1') {
     // Chạy thử không cần API key — trả về project mẫu sau ~300ms.
     await new Promise((r) => setTimeout(r, 300));
@@ -30,19 +33,17 @@ export async function qwenChat(messages, { temperature = 0.2, model, baseUrl, ap
   if (!modelName) throw new Error('Thiếu tên model');
   const url = `${base}/chat/completions`;
 
-  const maxTokens = Number(process.env.QWEN_MAX_TOKENS) || 16000;
+  const maxTok = Number(maxTokens) || Number(process.env.QWEN_MAX_TOKENS) || 16000; // override theo model nếu có
   const timeoutMs = Number(process.env.QWEN_TIMEOUT_MS) || 120000;
 
-  const body = {
-    model: modelName,
-    temperature,
-    max_tokens: maxTokens,
-    messages,
-  };
-  // JSON mode: ép model trả đúng 1 object JSON (giảm trường hợp parser phải "cứu").
-  if (process.env.QWEN_JSON_MODE === '1') {
-    body.response_format = { type: 'json_object' };
-  }
+  const body = { model: modelName, messages };
+  // Một số model (GPT-5 đời mới) không nhận temperature → cho phép bỏ.
+  if (!omitTemperature) body.temperature = temperature;
+  // OpenAI mới dùng 'max_completion_tokens' thay 'max_tokens' → cho phép đổi tên tham số.
+  body[tokenParam || 'max_tokens'] = maxTok;
+  // JSON mode: per-model override (jsonMode) > env QWEN_JSON_MODE. Có model không hỗ trợ -> tắt.
+  const useJson = jsonMode !== undefined ? jsonMode : process.env.QWEN_JSON_MODE === '1';
+  if (useJson) body.response_format = { type: 'json_object' };
 
   // Timeout: tránh request treo vô hạn khi endpoint/model chậm.
   const ctrl = new AbortController();
@@ -83,7 +84,7 @@ export async function qwenChat(messages, { temperature = 0.2, model, baseUrl, ap
   const finish = data?.choices?.[0]?.finish_reason;
   if (finish === 'length') {
     throw new Error(
-      `Output bị CẮT CỤT (finish_reason=length) vì chạm QWEN_MAX_TOKENS=${maxTokens}. ` +
+      `Output bị CẮT CỤT (finish_reason=length) vì chạm max_tokens=${maxTok}. ` +
         `Tăng QWEN_MAX_TOKENS trong server/.env rồi khởi động lại server.`
     );
   }

@@ -1,45 +1,63 @@
 /**
- * Cấu hình các MODEL để SO SÁNH (Bước đánh giá multi-model).
+ * Cấu hình các MODEL để SO SÁNH (đánh giá multi-model).
  *
- * TẤT CẢ đều dùng chuẩn OpenAI-compatible nên chỉ cần khai báo {label, model, baseUrl, apiKey}.
- * KHÔNG hardcode API key — đặt trong server/.env. Model nào thiếu model/key sẽ tự bị bỏ qua.
+ * Tất cả gọi qua chuẩn OpenAI-compatible /chat/completions. Mỗi entry:
+ *   { label, model, baseUrl, apiKey, maxTokens?, jsonMode?, tokenParam?, omitTemperature? }
+ *   - maxTokens        : trần token output (mỗi model 1 mức; DeepSeek ~8192, Qwen tới 32000…)
+ *   - jsonMode         : ép response_format json_object (true/false). Để undefined = theo QWEN_JSON_MODE.
+ *   - tokenParam       : 'max_tokens' (mặc định) | 'max_completion_tokens' (OpenAI đời mới).
+ *   - omitTemperature  : true nếu model không nhận 'temperature' (vd GPT-5 reasoning).
  *
- * Lấy token MIỄN PHÍ ở đâu (tự tạo key của bạn):
- *   - OpenRouter  https://openrouter.ai/keys  → nhiều model, có bản ":free". Lọc model free:
- *                 https://openrouter.ai/models?max_price=0  (COPY ĐÚNG slug rồi điền vào .env)
- *   - Groq        https://console.groq.com     (free tier, rất nhanh; baseUrl https://api.groq.com/openai/v1)
- *   - Google Gemini (free tier, endpoint OpenAI-compat):
- *                 https://generativelanguage.googleapis.com/v1beta/openai
- *   - DashScope   (đang dùng cho Qwen) — đã cấu hình sẵn ở dòng đầu.
+ * ⚠️ KHÔNG hardcode API key — đặt trong server/.env. Entry nào THIẾU key/model sẽ TỰ bị bỏ qua.
+ *    Nên "chỉ cần thêm API key vào .env" là chạy được model tương ứng.
+ *
+ * Lấy key:
+ *   - Anthropic (Claude): https://console.anthropic.com  → ANTHROPIC_API_KEY
+ *   - OpenAI (GPT):       https://platform.openai.com     → OPENAI_API_KEY  (+ OPENAI_MODEL = đúng id bạn có)
+ *   - DashScope (Qwen):   https://bailian.console.aliyun.com  → đã dùng QWEN_* sẵn
+ *   - DeepSeek:           https://platform.deepseek.com   → DEEPSEEK_API_KEY
  */
 export const MODELS = [
-  // 1) Qwen3-Coder-Next qua DashScope (đang dùng) — lấy từ .env hiện có
+  // 1) Claude Sonnet 4.6 — qua endpoint OpenAI-compatible của Anthropic.
+  //    Anthropic compat chưa chắc hỗ trợ response_format → để jsonMode:false (parser tự bóc JSON).
   {
-    label: 'qwen3-coder-next (DashScope)',
+    label: `Claude (${process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6'})`,
+    model: process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6' : undefined,
+    baseUrl: 'https://api.anthropic.com/v1',
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    maxTokens: 16000,
+    jsonMode: false,
+  },
+
+  // 2) GPT (OpenAI). Điền OPENAI_MODEL = ĐÚNG id bạn có quyền (vd gpt-5.4 / gpt-4.1...).
+  //    GPT-5 đời mới: dùng 'max_completion_tokens' và KHÔNG nhận temperature → bật 2 cờ dưới.
+  {
+    label: `OpenAI (${process.env.OPENAI_MODEL || 'gpt'})`,
+    model: process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL : undefined,
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: process.env.OPENAI_API_KEY,
+    maxTokens: 16000,
+    jsonMode: true,
+    tokenParam: 'max_completion_tokens',
+    omitTemperature: true,
+  },
+
+  // 3) Qwen3-Coder qua DashScope (đang dùng) — lấy từ QWEN_* trong .env.
+  {
+    label: `Qwen (${process.env.QWEN_MODEL || 'qwen3-coder'})`,
     model: process.env.QWEN_MODEL,
     baseUrl: process.env.QWEN_BASE_URL,
     apiKey: process.env.QWEN_API_KEY,
+    maxTokens: 32000,
   },
 
-  // 2-3) OpenRouter free — điền OPENROUTER_API_KEY + slug free (OR_MODEL_A/B) vào .env
+  // 4) DeepSeek — 'deepseek-chat' (V3; "Coder V2" đã gộp). Output tối đa ~8192.
   {
-    label: process.env.OR_MODEL_A || 'OpenRouter A',
-    model: process.env.OR_MODEL_A, // vd: 'qwen/qwen-2.5-coder-32b-instruct:free' (TỰ KIỂM CHỨNG slug còn free)
-    baseUrl: 'https://openrouter.ai/api/v1',
-    apiKey: process.env.OPENROUTER_API_KEY,
+    label: `DeepSeek (${process.env.DEEPSEEK_MODEL || 'deepseek-chat'})`,
+    model: process.env.DEEPSEEK_API_KEY ? process.env.DEEPSEEK_MODEL || 'deepseek-chat' : undefined,
+    baseUrl: 'https://api.deepseek.com',
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    maxTokens: 8192,
+    jsonMode: true,
   },
-  {
-    label: process.env.OR_MODEL_B || 'OpenRouter B',
-    model: process.env.OR_MODEL_B, // vd một model free khác (Llama/DeepSeek/Gemini/GLM…)
-    baseUrl: 'https://openrouter.ai/api/v1',
-    apiKey: process.env.OPENROUTER_API_KEY,
-  },
-
-  // 4) Groq free (tùy chọn) — điền GROQ_API_KEY + GROQ_MODEL
-  {
-    label: process.env.GROQ_MODEL || 'Groq',
-    model: process.env.GROQ_MODEL,
-    baseUrl: 'https://api.groq.com/openai/v1',
-    apiKey: process.env.GROQ_API_KEY,
-  },
-].filter((m) => m.model && m.baseUrl && m.apiKey); // bỏ model chưa cấu hình đủ
+].filter((m) => m.model && m.baseUrl && m.apiKey); // chỉ giữ model đã cấu hình đủ key+model
