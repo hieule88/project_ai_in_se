@@ -16,19 +16,24 @@ WebGen — trợ lý sinh web frontend (HTML/CSS/JS tự chứa) đa tác tử +
 - **Theme cố định** (`dbeeTheme.js`) chèn vào output để ổn định vibe (model chỉ ráp HTML, không vẽ lại CSS).
 - **Review Agent** (soát HTML + tự sửa 1 vòng), **Brand** (màu/font/logo, logo dùng placeholder rồi ghép sau).
 - **CRUD component lúc chạy** (`/api/components` + ComponentPanel), lưu `user-components.json`.
-- **Đánh giá:** `eval`, `eval:consistency`, `eval:models` — **chỉ dùng metric trong tài liệu** (RAGAS:
-  Faithfulness/Answer Relevancy/Context Relevancy + Correctness + text similarity). Đã bỏ latency/size/màu-font.
-- **Multi-model (`eval:models`):** so nhiều LLM cùng pipeline+RAG, metric RAGAS. Cấu hình `eval-models.config.js` —
-  mỗi model `{model,baseUrl,apiKey,maxTokens,jsonMode,tokenParam,omitTemperature}`, **chỉ cần thêm API key vào `.env`**.
-  Đã cấu hình sẵn: Claude Sonnet 4.6, GPT (OpenAI), Qwen (DashScope), DeepSeek, + **3 model free khuyên dùng**:
-  Qwen3-Coder (OpenRouter), gpt-oss-120b (Cerebras), Gemini Flash (Google AI Studio). `qwenClient.js` hỗ trợ override per-model.
+- **Đánh giá — ĐÃ CHẠY THẬT, có số liệu** (thiết kế CHỐT theo yêu cầu mới):
+  - **BỎ** so RAG on/off bằng *chỉ số* (`eval.js`/`eval-consistency.js` còn đó nhưng KHÔNG dùng cho báo cáo).
+  - **`npm run eval:models`** = trục chính: so **3 model free** (Qwen3-Coder-Next / Gemini 2.5 Flash / gpt-oss-120b) cùng pipeline+RAG.
+    Chỉ số: Correct% · Lỗi% · **Reuse** (proxy đếm component RAG tái dùng — KHÔNG phải Faithfulness RAGAS chuẩn) ·
+    AnsRel% · **Stab-Jac%/Stab-Cos%** (ổn định 2 lần gen, chỉ số *phái sinh* dựa similarity) · **Judge/VibeJ** (LLM-as-Judge). Lưu 2 trang/model ở `eval-models-pages/`.
+  - **Giám khảo trung lập** = **GLM-4.7** (`zai-glm-4.7` qua Cerebras), cấu hình `JUDGE_*` trong `.env`, chấm blind, `temperature=0`,
+    có chốt tự-loại. **Pre-flight bắt buộc `npm run test:judge`** (1 call) trước khi chạy eval:models. Reasoning model → cần `JUDGE_MAX_TOKENS` lớn (8000).
+  - **`npm run compare:rag`** = ảnh có-RAG vs không-RAG (model tốt nhất Qwen). **`npm run test:models`** = smoke verify rate-limit (retry 429/503 + `delayMs`).
+  - Kết quả: Qwen ổn định vibe nhất (Stab-Jac 93.3, VibeJ 4); Gemini kém ổn định nhất; gpt-oss chất lượng thấp nhất.
+- **Cấu hình model** (`eval-models.config.js`): Claude/OpenAI/Qwen/DeepSeek + free (OpenRouter/Cerebras/Gemini) — **chỉ thêm API key vào `.env`**.
+  ⚠️ Cerebras chỉ host `gpt-oss-120b` + `zai-glm-4.7`.
+- **Báo cáo:** `docs/REPORT.md` (mục lục 6 mục) → `docs/REPORT-final.docx` (pandoc). Ảnh ở `results/{qwen,gemini,gpt-oss}/image{1,2}.png` + `results/rag-on-off/{on,off}-{home,schedule}.png`.
 
 **Còn lại / next steps:**
-1. Chạy thật `npm run eval` + `eval:consistency` → điền số `【…】` trong `docs/REPORT.md` §6.1/§6.2.
-2. Lấy key 3 model free (OpenRouter / Cerebras / Google AI Studio) → `npm run eval:models` → điền §6.3.
-3. Chụp 4 ảnh `eval-consistency/*.html` chèn báo cáo.
-4. Hoàn thiện báo cáo (8 trang) + chuẩn bị demo.
-5. Push lên `main` (đang ở nhánh `add-models`).
+1. Điền thông số mô hình Qwen ở `REPORT.md` §3.1 (số tham số, context length) — **từ model card chính thức, KHÔNG bịa**.
+2. Hoàn thiện **Tài liệu tham khảo** (điền 2 tài liệu môn học + kiểm năm/tác giả).
+3. (Tùy) xuất PDF; dọn `REPORT.docx`/`REPORT-v2.docx` cũ, giữ `REPORT-final.docx`.
+4. Commit + push nhánh `add-models` → merge `main`; tag v1.0.
 
 ## 2. Bẫy/vận hành QUAN TRỌNG (đừng vấp lại)
 - **Chạy trên ổ Linux của WSL (`~/webgen-assistant`), KHÔNG phải `/mnt/c`.** Trên `/mnt/c`, `esbuild` (web) và
@@ -45,12 +50,18 @@ WebGen — trợ lý sinh web frontend (HTML/CSS/JS tự chứa) đa tác tử +
   (đã set cờ trong `eval-models.config.js`). **Claude** gọi qua `api.anthropic.com/v1` (jsonMode off).
 - **QWEN_MAX_TOKENS=32000** cho Qwen; mỗi model trong eval:models có `maxTokens` riêng.
 
+- **Pandoc xuất .docx:** chạy TRONG `docs/`: `pandoc REPORT.md -o REPORT-final.docx --toc --toc-depth=2 -V lang=vi`
+  (chạy trong `docs/` để ảnh `../results/...` nhúng được). Đóng Word trước khi ghi đè (Word khóa file). Công thức để dạng chữ
+  (pandoc không dịch `\xrightarrow/\lVert`). Cài: `sudo apt-get install -y pandoc`.
+
 ## 3. Quyết định kiến trúc đã chốt
 - Output = HTML/CSS/JS thuần, 1 file `/index.html` tự chứa; preview iframe; KHÔNG CDN.
-- `pipeline.js` là điểm điều phối agent duy nhất: Orchestrator(stub) → RAG → Code → Review → (logo + theme).
+- `pipeline.js` là điểm điều phối duy nhất: resolve brand → RAG → Code → Review → (logo + theme).
+- **Đa tác tử (sự thật nội bộ):** THẬT = RAG + Code + Review (producer–critic, Review tự sửa 1 vòng). Orchestrator/Design CHƯA làm (seam).
+  ⚠️ **Trong BÁO CÁO chỉ trình bày phần ĐÃ làm — KHÔNG nhắc orchestrator/design/"stub".**
 - Hợp đồng interface: `docs/API_CONTRACT.md` (đổi interface phải cập nhật file này trước).
 
 ## 4. Đọc thêm để nắm đủ
 - `CLAUDE.md` — ngữ cảnh & trạng thái (Claude tự đọc).
-- `docs/REPORT.md` — báo cáo (mô hình, RAG, embedding, đánh giá theo RAGAS).
+- `docs/REPORT.md` → `docs/REPORT-final.docx` — báo cáo (mục lục 6 mục: giới thiệu · kiến trúc · Qwen · Code RAG · đánh giá · kết luận).
 - `docs/API_CONTRACT.md`, `docs/TEAM_PLAN.md`, `docs/REVIEW_CHECKLIST.md`, `SETUP.md`.

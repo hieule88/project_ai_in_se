@@ -18,6 +18,10 @@ eval-models-results.json
 **/eval-models-results.json
 eval-consistency/
 **/eval-consistency/
+eval-models-pages/
+**/eval-models-pages/
+rag-compare/
+**/rag-compare/
 
 # Vector store Chroma (nếu chạy local)
 chroma_db/

@@ -12,6 +12,9 @@
     "test:rag": "node scripts/test-rag.js",
     "test:review": "node scripts/test-review.js",
     "test:brand": "node scripts/test-brand.js",
+    "test:judge": "node scripts/test-judge.js",
+    "test:models": "node scripts/smoke-models.js",
+    "compare:rag": "node scripts/rag-compare.js",
     "eval": "node scripts/eval.js",
     "eval:consistency": "node scripts/eval-consistency.js",
     "eval:models": "node scripts/eval-models.js"

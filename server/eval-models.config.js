@@ -77,7 +77,7 @@ export const MODELS = [
     model: process.env.GEMINI_API_KEY ? process.env.GEMINI_MODEL || 'gemini-2.5-flash' : undefined,
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     apiKey: process.env.GEMINI_API_KEY,
-    maxTokens: 16000,
+    maxTokens: 32000, // 2.5-flash xuất được nhiều token; 16000 bị cắt cụt trang dài
     jsonMode: true,
   },
 
@@ -87,7 +87,32 @@ export const MODELS = [
     model: process.env.CEREBRAS_API_KEY ? process.env.CEREBRAS_MODEL || 'gpt-oss-120b' : undefined,
     baseUrl: 'https://api.cerebras.ai/v1',
     apiKey: process.env.CEREBRAS_API_KEY,
-    maxTokens: 16000,
+    maxTokens: 8000, // free 60K token/phút → giảm output cho đỡ vượt TPM
+    delayMs: 20000, // giãn 20s giữa các call để giữ dưới 60K token/phút
     jsonMode: true, // nếu báo lỗi response_format → đổi thành false (parser tự bóc JSON)
   },
 ].filter((m) => m.model && m.baseUrl && m.apiKey); // chỉ giữ model đã cấu hình đủ key+model
+
+/**
+ * GIÁM KHẢO TRUNG LẬP (LLM-as-Judge) — chấm 1–5 mọi bài theo rubric, BLIND (ẩn nhãn model).
+ * Nên chọn model KHÔNG nằm trong danh sách dự thi ở trên để tránh self-enhancement bias.
+ * Chỉ cần thêm JUDGE_* vào server/.env là bật; thiếu JUDGE_API_KEY → eval:models bỏ qua phần chấm.
+ *
+ * Gợi ý (trung lập với Qwen/Gemini/gpt-oss đang thi):
+ *   - Claude:   JUDGE_BASE_URL=https://api.anthropic.com/v1            JUDGE_MODEL=claude-sonnet-4-6   (jsonMode off)
+ *   - DeepSeek: JUDGE_BASE_URL=https://api.deepseek.com                JUDGE_MODEL=deepseek-chat
+ *   - OpenRouter (free): JUDGE_BASE_URL=https://openrouter.ai/api/v1   JUDGE_MODEL=deepseek/deepseek-chat:free
+ */
+export const JUDGE = process.env.JUDGE_API_KEY
+  ? {
+      label: `Judge: ${process.env.JUDGE_MODEL || 'claude-sonnet-4-6'}`,
+      model: process.env.JUDGE_MODEL || 'claude-sonnet-4-6',
+      baseUrl: process.env.JUDGE_BASE_URL || 'https://api.anthropic.com/v1',
+      apiKey: process.env.JUDGE_API_KEY,
+      // Model reasoning (vd GLM/R1) đốt token cho phần "suy nghĩ" trước khi xuất JSON → để rộng.
+      maxTokens: Number(process.env.JUDGE_MAX_TOKENS) || 8000,
+      jsonMode: process.env.JUDGE_JSON_MODE === '1', // mặc định off (parser tự bóc JSON từ text)
+      tokenParam: process.env.JUDGE_TOKEN_PARAM, // vd 'max_completion_tokens' cho GPT đời mới
+      omitTemperature: process.env.JUDGE_OMIT_TEMP === '1',
+    }
+  : null;

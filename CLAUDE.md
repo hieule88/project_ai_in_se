@@ -40,10 +40,12 @@ docs/API_CONTRACT.md      "HỢP ĐỒNG" interface — đọc trước khi sử
 ## Chạy dự án
 ```bash
 # terminal 1
-cd server && cp .env.example .env && npm install && npm run dev   # http://localhost:8787 (MOCK)
+cd server && cp .env.example .env && npm install && npm run dev   # http://localhost:8787
 # terminal 2
 cd web && npm install && npm run dev                              # http://localhost:5173
+# mở trình duyệt: http://localhost:5173
 ```
+⚠️ **Máy hiện tại (WSL):** PHẢI chạy ở ổ Linux `~/webgen-assistant`, KHÔNG ở `/mnt/c` (Vite/esbuild + onnxruntime embedding sẽ lỗi). Sửa code ở `/mnt/c` (git) rồi `tar` đồng bộ sang `~` (xem HANDOFF). Cần `npm run build:rag` 1 lần để có `rag-index.json`.
 
 ## Trạng thái hiện tại
 Skeleton chạy end-to-end ở MOCK_MODE: mô tả → sinh HTML → preview iframe → chỉnh sửa.
@@ -52,10 +54,17 @@ Bước 3 (Code RAG): ĐÃ DỰNG — kho là **design-system DBEE** (16 compone
 Bước 6 (Review Agent): ĐÃ DỰNG — soát HTML tĩnh (`src/review.js`) + tự sửa 1 vòng, nối vào generate & edit. Test: `npm run test:review`.
 Bước 7 (Cá nhân hóa brand): ĐÃ DỰNG — `src/brands.js` + `/api/brands`, component gắn brand + boost truy xuất, UI `BrandPanel.jsx`. Test: `npm run test:brand`.
 Mở rộng: end-user tự quản lý component RAG lúc chạy — CRUD đầy đủ (`POST/PUT/DELETE /api/components`, embed + upsert/remove ngay), lưu `user-components.json`, UI `ComponentPanel.jsx` (danh sách Sửa/Xóa + xem trước trực tiếp). `build:rag` gộp built-in + user.
-Bước 4 (Đánh giá): ĐÃ DỰNG, **chỉ dùng metric trong tài liệu (RAGAS)** — `npm run eval` (so RAG on/off: Correctness/Faithfulness/Context Relevancy/Answer Relevancy), `npm run eval:consistency` (nhất quán 2 trang DBEE: text-similarity Jaccard + Faithfulness), `npm run eval:models` (so nhiều LLM cùng pipeline+RAG). Còn chạy thật để điền số.
-So sánh nhiều model: `eval-models.config.js` — mỗi model `{model,baseUrl,apiKey,maxTokens,jsonMode,tokenParam,omitTemperature}`, **chỉ cần thêm API key vào `.env`** (Claude/OpenAI/Qwen/DeepSeek + free: OpenRouter qwen3-coder, Cerebras gpt-oss-120b, Gemini Flash). `qwenClient.js` hỗ trợ override per-model.
+Bước 4 (Đánh giá): ✅ ĐÃ CHẠY THẬT, có số liệu (xem `docs/REPORT.md` + `docs/REPORT-final.docx`). **Thiết kế thực nghiệm CHỐT (theo yêu cầu):**
+  - **BỎ** so RAG on/off bằng *chỉ số* (`eval.js`/`eval-consistency.js` còn đó nhưng KHÔNG dùng cho báo cáo).
+  - **`npm run eval:models`** = trục chính: so **3 model free** (Qwen3-Coder-Next / Gemini 2.5 Flash / gpt-oss-120b) trên CÙNG pipeline+RAG. Mỗi model gen 3 prompt, prompt[0] gen 2 lần để đo ổn định. Chỉ số: Correct% · Lỗi% · **Reuse** (đếm component RAG tái dùng — *proxy*, KHÔNG phải Faithfulness RAGAS chuẩn) · AnsRel% · **Stab-Jac%/Stab-Cos%** (ổn định 2 lần gen, *chỉ số phái sinh* dựa trên similarity) · **Judge/VibeJ** (LLM-as-Judge). Lưu 2 trang/model ở `eval-models-pages/`.
+  - **Giám khảo trung lập** (tránh self-bias): **GLM-4.7** (`zai-glm-4.7` qua Cerebras) — cấu hình `JUDGE_*` trong `.env`, chấm blind, `temperature=0`. **Pre-flight bắt buộc**: `npm run test:judge` (1 call) trước khi chạy eval:models để khỏi tốn token thí sinh. Reasoning model → cần `JUDGE_MAX_TOKENS` lớn (mặc định 8000).
+  - **`npm run compare:rag`** = minh họa RAG định tính: model tốt nhất (Qwen) sinh trang có-RAG vs không-RAG → chụp ảnh.
+  - **`npm run test:models`** = smoke 2 lần gen/model (verify rate-limit/lỗi trước khi chạy bản đầy đủ).
+  - Kết quả thật: **Qwen ổn định vibe nhất** (Stab-Jac 93.3, VibeJ 4); Gemini kém ổn định nhất; gpt-oss chất lượng thấp nhất (Judge 2.7). Ảnh đặt ở `results/{qwen,gemini,gpt-oss}/image{1,2}.png` + `results/rag-on-off/{on,off}-{home,schedule}.png`.
+So sánh nhiều model: `eval-models.config.js` — mỗi model `{model,baseUrl,apiKey,maxTokens,jsonMode,tokenParam,omitTemperature,delayMs}`, **chỉ cần thêm API key vào `.env`**. Đã cấu hình: Claude/OpenAI/Qwen/DeepSeek + free (OpenRouter/Cerebras/Gemini). Cerebras chỉ host `gpt-oss-120b` + `zai-glm-4.7`. `qwenClient.js` override per-model; eval:models có retry 429/503 + `delayMs` (Cerebras 20s).
 Bước 8 (một phần): export `.zip` thật (jszip) + Monaco editor (local/offline) ĐÃ LÀM.
-Multi-agent còn lại (orchestrator/design) vẫn là stub.
+Báo cáo: `docs/REPORT.md` → xuất `.docx` bằng **pandoc** (`pandoc REPORT.md -o REPORT-final.docx --toc --toc-depth=2 -V lang=vi`, chạy TRONG `docs/` để nhúng ảnh `../results/...`). Công thức để dạng chữ (pandoc không dịch `\xrightarrow/\lVert`).
+**Đa tác tử (trung thực):** thật = RAG Agent (truy xuất) + Code Agent + Review Agent (producer–critic, tự sửa 1 vòng). Orchestrator/Design CHƯA làm (chỉ là seam). ⚠️ Trong BÁO CÁO chỉ trình bày phần ĐÃ làm, KHÔNG nhắc orchestrator/design/stub.
 
 ## LỘ TRÌNH LÀM MỘT MÌNH (làm tuần tự, ưu tiên từ trên xuống)
 
@@ -65,8 +74,8 @@ Multi-agent còn lại (orchestrator/design) vẫn là stub.
 3. ✅ **Code RAG cơ bản:** kho **design-system DBEE** (16 component, `src/rag/components.js`) + theme cố định (`dbeeTheme.js`); embedding local (@xenova/transformers);
    store memory mặc định + Chroma tùy chọn (`src/rag/store.js`); `retrieveComponents` top-k; đã nối vào `pipeline.js`.
    Build: `npm run build:rag`. Test (không tốn tiền): `npm run test:rag`.
-4. ◑ **Đánh giá nhẹ:** ĐÃ DỰNG, **chỉ dùng metric trong tài liệu (RAGAS)** — `eval` (so RAG on/off), `eval:consistency` (nhất quán 2 trang), `eval:models` (so nhiều LLM, chỉ cần thêm API key). Chỉ CÒN chạy thật `MOCK_MODE=0` để điền số vào `REPORT.md`.
-5. **Báo cáo + demo:** chuẩn bị 2–3 prompt demo đã chạy ổn.
+4. ✅ **Đánh giá:** ĐÃ CHẠY THẬT. Trục chính = `eval:models` (3 model free + Stab + LLM-as-Judge GLM-4.7) + `compare:rag` (ảnh RAG on/off). Bỏ so RAG on/off bằng chỉ số. Số liệu + ảnh đã vào `REPORT.md`/`REPORT-final.docx`.
+5. ✅ **Báo cáo:** `docs/REPORT.md` viết theo mục lục 6 mục; xuất `REPORT-final.docx` (pandoc). Còn: điền thông số Qwen §3.1 (từ model card), hoàn thiện Tài liệu tham khảo.
 
 ### NÊN CÓ (nếu còn thời gian)
 6. ✅ **Review Agent đơn giản:** soát HTML tĩnh (`src/review.js`) → nếu lỗi, gọi model sửa 1 vòng (`buildFixMessages`); nối vào generate & edit. Test miễn phí: `npm run test:review`.
