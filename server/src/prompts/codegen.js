@@ -123,6 +123,64 @@ export function buildFixMessages({ files, issues, language = 'vi' }) {
   ];
 }
 
+/**
+ * CRITIC AGENT (Reflection) — TỰ PHÊ BÌNH có cấu trúc trang do Coder sinh.
+ * Khác với kiểm tĩnh (chỉ bắt lỗi cú pháp), Critic LLM đánh giá ĐÚNG ĐẮN / ĐẦY ĐỦ / PHONG CÁCH /
+ * TUÂN THỦ DESIGN SYSTEM. Báo cáo công cụ kiểm tĩnh được đưa kèm như kết quả "unit test" để Critic bám vào.
+ * Trả về DUY NHẤT JSON: { "acceptable": bool, "issues": [string], "suggestions": [string] }.
+ */
+export function buildCritiqueMessages({ task, files, toolReport, language = 'vi' }) {
+  const toolText =
+    toolReport && toolReport.issues?.length
+      ? toolReport.issues.map((i) => `- [${i.level}] ${i.message}`).join('\n')
+      : '(công cụ kiểm tra tĩnh không phát hiện lỗi)';
+  return [
+    {
+      role: 'system',
+      content:
+        `Bạn là Critic Agent — ĐÁNH GIÁ NGHIÊM KHẮC trang web tĩnh do Coder Agent tạo. Ngôn ngữ: ${language}.\n` +
+        `Soi trên 4 tiêu chí: (1) ĐÚNG & ĐẦY ĐỦ so với yêu cầu người dùng; (2) chất lượng HTML/CSS (hợp lệ, gọn, semantic, không CSS thừa/trùng);\n` +
+        `(3) TUÂN THỦ DESIGN SYSTEM DBEE — dùng đúng class "dbee-*", KHÔNG tự bịa lại CSS cho class dbee-*; (4) bố cục & khả năng hiển thị.\n` +
+        `Bạn có BÁO CÁO CÔNG CỤ kiểm tra tĩnh kèm theo (coi như kết quả unit-test) để tham khảo.\n` +
+        `CHỈ trả về DUY NHẤT một JSON: {"acceptable": boolean, "issues": [ "mô tả lỗi cụ thể" ], "suggestions": [ "cách sửa cụ thể" ]}.\n` +
+        `Đặt "acceptable": true CHỈ KHI trang đã tốt và không còn lỗi đáng kể; ngược lại nêu rõ vấn đề + gợi ý.`,
+    },
+    {
+      role: 'user',
+      content:
+        `Yêu cầu gốc của người dùng:\n"""${task || '(không rõ)'}"""\n\n` +
+        `Báo cáo công cụ kiểm tra tĩnh:\n${toolText}\n\n` +
+        `Mã trang hiện tại:\n${JSON.stringify(files)}`,
+    },
+  ];
+}
+
+/**
+ * Coder chỉnh sửa theo FEEDBACK của Critic (Reflection revision). Nhận feedback đã cấu trúc
+ * (issues + suggestions) thay vì chỉ danh sách lỗi tĩnh, để cải thiện cả nội dung lẫn phong cách.
+ */
+export function buildReviseMessages({ files, critique, language = 'vi' }) {
+  const fb =
+    [
+      ...(critique.issues || []).map((s) => `- Vấn đề: ${s}`),
+      ...(critique.suggestions || []).map((s) => `- Gợi ý: ${s}`),
+    ].join('\n') || '- (không có phản hồi cụ thể)';
+  return [
+    {
+      role: 'system',
+      content:
+        `Bạn là Coder Agent. Hãy CHỈNH SỬA trang web theo phản hồi của Critic Agent. Ngôn ngữ: ${language}.\n` +
+        `GIỮ NGUYÊN phần đã tốt, chỉ cải thiện đúng theo phản hồi; tuân thủ design system DBEE (dùng class dbee-*, không bịa lại CSS).\n` +
+        `Trả về TOÀN BỘ danh sách file sau khi sửa.\n` +
+        OUTPUT_RULES,
+    },
+    {
+      role: 'user',
+      content: `Mã hiện tại:\n${JSON.stringify(files)}\n\nPhản hồi của Critic cần khắc phục:\n${fb}`,
+    },
+  ];
+}
+
 /** Project mẫu khi MOCK_MODE=1 — HTML tự chứa, đúng định dạng "hợp đồng". */
 export const mockProjectRaw = JSON.stringify({
   summary: 'Landing page mẫu (mock) — quán cà phê',

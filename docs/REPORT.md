@@ -42,61 +42,128 @@ sát một bộ thiết kế thống nhất**, giảm "bịa", và ổn định 
 ## 2. Kiến trúc hệ thống
 
 ### 2.1. Tổng quan (frontend – backend – pipeline)
+WebGen được tổ chức theo **kiến trúc ba lớp** — *giao diện (client) · máy chủ (server) · dịch vụ ngoài (tri thức
+& mô hình)* — với ranh giới trách nhiệm rõ ràng để phát triển và mở rộng độc lập.
+
 ```
-        ┌──────────────── Frontend (React + Vite + Tailwind) ────────────────┐
- Người  │ ChatPanel · BrandPanel · ComponentPanel (CRUD kho RAG)             │
- dùng ─▶│ PreviewPanel (iframe) · CodeViewer (Monaco) · AgentSteps           │
-        └───────────────┬────────────────────────────────────────────────────┘
-                        │ HTTP JSON  (/api/generate, /api/edit, /api/brands, /api/components)
-        ┌───────────────▼──────────────── Backend (Node ≥18 / Express, ESM) ──┐
-        │ index.js (REST)                                                       │
-        │ pipeline.js — ĐIỂM ĐIỀU PHỐI DUY NHẤT của các tác tử                  │
-        │   Resolve brand → RAG Agent → Code Agent → Review Agent               │
-        │                              → inline logo → chèn theme DBEE          │
-        │ rag/* (embed · store · retrieve)   qwenClient.js   review.js          │
-        └───────────────────────────────────────────────────────────────────────┘
+┌─────────────────── NGƯỜI DÙNG · Trình duyệt ───────────────────┐
+│  GIAO DIỆN  (React + Vite + Tailwind)                           │
+│  • Chat: mô tả & chỉnh sửa        • Preview: iframe cục bộ       │
+│  • Soạn mã: Monaco editor          • Quản lý Brand & Kho RAG     │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │  gửi yêu cầu  /  nhận website  (HTTP)
+┌─────────────────────────────▼──────────── MÁY CHỦ · Node + Express ──┐
+│   Lớp API  →  QUY TRÌNH ĐA TÁC TỬ  (Reflection — xem Mục 2.2)         │
+│   ┌────────────────────┐            ┌────────────────────────────┐   │
+│   │ CODE RAG           │            │ LỚP GỌI MÔ HÌNH             │   │
+│   │ embedding cục bộ + │            │ trung lập nhà cung cấp (2.3)│   │
+│   │ vector store       │            └──────────────┬─────────────┘   │
+│   └─────────┬──────────┘                           │                 │
+└─────────────┼───────────────────────────────────────┼─────────────────┘
+              │ truy xuất component                    │ sinh / sửa mã
+              ▼                                         ▼
+  KHO TRI THỨC COMPONENT (design-system DBEE)     MÔ HÌNH NGÔN NGỮ (LLM)
 ```
-- **Frontend:** React + Vite + Tailwind; **Monaco Editor** (cấu hình chạy cục bộ/offline) để sửa mã; **JSZip**
-  để export `.zip`; preview bằng **iframe** dựng từ chuỗi HTML (không CDN).
-- **Backend:** Express (ESM); một client model **OpenAI-compatible**; **parser JSON phòng thủ**.
-- **RAG:** `@xenova/transformers` (embedding cục bộ) + vector store *memory* (cosine) hoặc **Chroma**.
+
+- **Giao diện (frontend).** Nơi người dùng thực hiện vòng lặp *mô tả → xem trước → chỉnh sửa qua hội thoại*: nhập
+  mô tả, xem website hiển thị tức thì, sửa mã trực tiếp, và quản lý thương hiệu cùng kho component. Dùng React +
+  Vite + Tailwind; trình soạn mã (Monaco) và nén `.zip` đều **chạy cục bộ/offline**.
+- **Máy chủ (backend).** Tiếp nhận yêu cầu và **điều phối quy trình nhiều tác tử** biến mô tả thành website (luồng
+  chi tiết ở **Mục 2.2**); đồng thời chứa hai khối hạ tầng: **Code RAG** (embedding cục bộ + vector store) và
+  **lớp gọi mô hình trung lập nhà cung cấp** (chi tiết ở **Mục 2.3**). Triết lý xuyên suốt là **"luôn có nhánh
+  chạy được"** — mỗi khâu đều có phương án dự phòng nên hệ thống không gãy giữa chừng; ngoài ra có chế độ chạy thử
+  không cần khóa API để phát triển/minh họa.
+- **Dịch vụ ngoài.** **Kho tri thức** (bộ component design-system DBEE) và **mô hình ngôn ngữ** (LLM open-weight)
+  được tách khỏi lõi để **thay thế dễ dàng**. Kho vector mặc định chạy trong tiến trình (so khớp cosine); có thể
+  chuyển sang một vector-DB chuyên dụng khi kho lớn mà không đổi phần còn lại.
+
+**Bốn quyết định kiến trúc nền tảng** chi phối toàn hệ thống:
+1. **Đầu ra là một trang web tự chứa** (HTML/CSS/JS trong một tệp) → **xem trước bằng iframe cục bộ**, không cần
+   máy chủ đóng gói hay CDN ⇒ chạy offline, an toàn khi demo.
+2. **Code RAG là thành phần lõi** (yếu tố quyết định Mức 3): bổ sung **lớp tri thức ngoài + truy xuất theo ngữ
+   nghĩa + tăng cường sinh** thay vì để mô hình tự "bịa".
+3. **Quy trình nhiều tác tử theo phương pháp Reflection** để hệ thống tự nâng chất lượng đầu ra (Mục 2.2).
+4. **Trung lập với nhà cung cấp mô hình** để dễ thay thế và so sánh nhiều LLM (Mục 2.3).
 
 ### 2.2. Quy trình đa tác tử
-`pipeline.js` là **điểm điều phối duy nhất**; các tác tử phối hợp **tuần tự**, mỗi tác tử/bước trả về một phần
-tử `agentSteps` để frontend hiển thị tiến trình. Các thành phần đã hiện thực:
+Khi người dùng gửi một mô tả, hệ thống đưa nó qua **một chuỗi bước nối tiếp nhau**, mỗi bước do một **tác tử
+(agent)** chuyên trách đảm nhiệm; tiến trình của từng bước được hiển thị trực tiếp trên giao diện để người dùng
+theo dõi. Luồng hoạt động đầy đủ:
 
-| Bước | Thành phần | Vai trò |
-|---|---|---|
-| 1 | Tiếp nhận & nhận diện | Nhận mô tả người dùng, *resolve brand* (màu/font/logo) dùng cho cả truy xuất lẫn prompt |
-| 2 | **RAG Agent** | Truy xuất top-k component theo ngữ nghĩa (Mục 4); có **fallback**: store lỗi vẫn sinh được mã |
-| 3 | **Code Agent** (LLM) | Gọi Qwen3-Coder-Next sinh JSON `{summary, entry, files}` |
-| 4 | **Review Agent** (LLM) | Soát HTML tĩnh → nếu lỗi thì **tự gọi LLM sửa 1 vòng** rồi soát lại |
-| 5 | Hậu xử lý | Thay placeholder logo bằng ảnh thật; chèn **theme DBEE** cố định để đồng nhất giao diện |
+```
+mô tả → ① Nhận diện thương hiệu → ② Truy xuất component → ③ Sinh mã → ④ Phản biện & cải thiện (Reflection) → ⑤ Hoàn thiện → website
+```
 
-Đóng góp *agentic* rõ nhất là cặp **Code Agent (producer) → Review Agent (critic tự sửa)**: Review không chỉ báo
-lỗi mà **ra quyết định và hành động** — phát hiện lỗi → gọi mô hình sửa → kiểm lại; nếu vẫn lỗi thì giữ bản tốt
-hơn. **RAG Agent** cung cấp tri thức nền (component) cho Code Agent. Việc gom mọi tác tử về **một điểm điều phối**
-giúp luồng dễ quan sát (qua `agentSteps`) và dễ mở rộng.
+**① Tiếp nhận & nhận diện thương hiệu.** Hệ thống nhận mô tả của người dùng; nếu người dùng đã chọn một thương
+hiệu, nó nạp sẵn bộ nhận diện (màu chủ đạo, phông chữ, logo) để áp dụng xuyên suốt các bước sau.
 
-**Review Agent (`review.js`)** kiểm các lỗi tĩnh: thiếu khung `<html>/<body>`, lệch `<script>/<style>`, output
-bị cắt cụt, còn `TODO`, dùng CDN ngoài. Có lỗi *error* → gọi `buildFixMessages` cho LLM sửa; luôn có fallback
-giữ bản gốc nếu sửa thất bại (không bao giờ chặn pipeline).
+**② Truy xuất tri thức (RAG Agent).** Dựa trên mô tả, tác tử này tìm trong kho tri thức **những mẫu giao diện
+(component) liên quan nhất về mặt ý nghĩa** rồi đưa sang bước sinh mã (chi tiết ở Mục 4). Nếu kho gặp sự cố, hệ
+thống **vẫn tiếp tục** sinh mã chứ không dừng lại.
+
+**③ Sinh mã (Coder Agent).** Tác tử này ghép mô tả của người dùng, bộ nhận diện thương hiệu và các mẫu giao diện
+vừa truy xuất thành một yêu cầu, rồi **gọi mô hình ngôn ngữ** để tạo ra trang web (bản nháp đầu tiên).
+
+**④ Phản biện & tự cải thiện theo vòng lặp Reflection (Critic Agent).** Đây là bước được thiết kế theo phương
+pháp **Reflection**: thay vì chỉ sửa một lần, hệ thống chạy một **vòng lặp tự phê bình – chỉnh sửa**. Mỗi vòng,
+Critic Agent **tự đánh giá trang một cách có cấu trúc** trên bốn tiêu chí — *đúng & đầy đủ* so với yêu cầu, *chất
+lượng HTML/CSS*, *tuân thủ bộ thiết kế DBEE*, và *bố cục/khả năng hiển thị* — đồng thời tham chiếu **kết quả của
+một công cụ kiểm tra tự động** (đóng vai trò như "unit test": phát hiện trang bị cắt dở, thiếu khung, thẻ mở/đóng
+không cân…). Critic trả về **phản hồi có cấu trúc** gồm các lỗi cụ thể và gợi ý sửa; Coder dựa vào đó tạo **phiên
+bản cải tiến**, rồi Critic lại đánh giá tiếp. Vòng lặp **dừng khi Critic chấp nhận và công cụ sạch lỗi**, hoặc khi
+đạt số vòng tối đa; hệ thống luôn **giữ lại phiên bản tốt nhất**.
+
+**⑤ Hoàn thiện.** Cuối cùng, hệ thống chèn ảnh logo thật của thương hiệu vào trang và áp một **bộ giao diện chuẩn
+(theme) cố định** để mọi trang sinh ra mang cùng một nhận diện (chi tiết ở Mục 4).
+
+Điểm cốt lõi về mặt *đa tác tử* là cặp **Coder Agent (sinh) – Critic Agent (phản biện)** hoạt động theo phương
+pháp **Reflection**: thay vì một lượt sinh rồi dừng, hai tác tử **đối thoại lặp đi lặp lại** — Critic tự phê bình
+*có cấu trúc* và được **một công cụ kiểm tra định lượng** hậu thuẫn, Coder cải thiện theo từng phản hồi — nhờ đó
+phát hiện được những điểm yếu mà một lượt sinh đơn lẻ thường bỏ sót. Tác tử truy xuất (RAG) đóng vai trò **cung
+cấp tri thức nền** cho việc sinh. Cả chuỗi được thực thi theo một trình tự **có khả năng chống gãy**: mỗi bước đều
+có phương án dự phòng (kho lỗi thì bỏ qua; phê bình/chỉnh sửa thất bại thì giữ phiên bản tốt nhất), nên quy trình
+**không bao giờ dừng giữa chừng**, đồng thời dễ theo dõi và mở rộng.
+
+Khi *chỉnh sửa* một trang đã có, luồng tương tự nhưng gọn hơn: hệ thống **tạm cất các ảnh nhúng dung lượng lớn**
+để khỏi phải gửi dữ liệu nặng cho mô hình, gửi kèm yêu cầu chỉnh sửa, rồi khôi phục ảnh và soát lỗi lại.
 
 ### 2.3. API & định dạng đầu ra
-Hợp đồng interface cố định ở `docs/API_CONTRACT.md`:
+Giao diện (frontend) và máy chủ (backend) trao đổi qua các lời gọi mạng. Máy chủ trả kết quả theo **một định
+dạng thống nhất** gồm: **câu tóm tắt**, **nội dung website** và **nhật ký các bước tác tử** (để giao diện hiển
+thị tiến trình). Về nội dung website, dự án cố tình quy ước **chỉ một tệp `/index.html` tự chứa** — toàn bộ HTML,
+CSS và JavaScript nằm trong cùng một tệp. (Về kỹ thuật, trường chứa nội dung là một *danh sách tệp* để linh hoạt
+mở rộng về sau, nhưng theo quy ước hiện tại danh sách này luôn chỉ gồm đúng tệp `/index.html`.) Mục này tập trung
+**hai quyết định thiết kế cốt lõi**: *đổi mô hình dễ dàng* và *biến đầu ra của mô hình thành bản xem trước (preview)*.
 
-| Endpoint | Vào | Ra |
-|---|---|---|
-| `POST /api/generate` | `{ description, language, brandId }` | `ProjectResult` |
-| `POST /api/edit` | `{ files, instruction, language }` | `ProjectResult` |
-| `GET/POST /api/brands` | brand `{name, colors, font, logo}` | danh sách / brand mới |
-| `GET/POST/PUT/DELETE /api/components` | component người dùng | thống kê / id |
-| `GET /api/health` | — | trạng thái + model |
+**(a) Kiến trúc trung lập với nhà cung cấp.** Khả năng đổi mô hình dễ dàng đến từ **ba nguyên tắc thiết kế**:
 
-`ProjectResult = { summary, entry:"/index.html", files:[{path,content}], agentSteps:[{agent,status,summary}], meta }`.
-**Mô hình bắt buộc trả về duy nhất một JSON** `{summary, entry, files}` (ràng buộc trong *OUTPUT_RULES* của
-system prompt). Tầng nhận kết quả **phòng thủ**: `parser.js` bóc JSON kể cả khi mô hình lỡ bọc ```` ```json ````
-hay kèm lời dẫn, chuẩn hóa `path`, chọn `entry`; lỗi parse trả `502` kèm raw để gỡ.
+1. **Một lớp kết nối trung gian duy nhất.** Hệ thống không gọi thẳng tới nhà cung cấp mô hình; *mọi* yêu cầu đều
+   đi qua một lớp trung gian chung. Phần còn lại của hệ thống **không cần biết** đang dùng nhà cung cấp nào hay gọi
+   ra sao. Nhờ vậy, khi muốn đổi hoặc thêm nhà cung cấp, ta **chỉ sửa đúng lớp trung gian này**, các phần khác giữ nguyên.
+2. **Dựa trên một chuẩn gọi chung.** Hầu hết nhà cung cấp LLM hiện nay đều hỗ trợ **cùng một quy ước gọi** (thường
+   gọi là chuẩn "tương thích OpenAI": gửi vào một chuỗi hội thoại, nhận lại một đoạn văn bản trả lời). Bằng cách bám
+   theo "mẫu số chung" này, **một cách gọi duy nhất dùng được cho mọi nhà cung cấp** — không phải viết mã riêng cho
+   từng hãng. Trong đồ án đã **chạy thật** với DashScope (Qwen), Google AI Studio (Gemini) và Cerebras (gpt-oss);
+   các nhà cung cấp khác tuân theo cùng chuẩn (như OpenRouter, hay máy chủ tự host bằng vLLM) cũng tương thích mà
+   không cần sửa mã.
+3. **Đưa thông tin riêng của nhà cung cấp ra ngoài, dưới dạng cấu hình.** Địa chỉ dịch vụ, khóa API và tên mô hình
+   được khai báo trong tệp cấu hình chứ không "gắn chết" trong mã — nên đổi nhà cung cấp chỉ là **đổi cấu hình**.
+   Một vài khác biệt nhỏ giữa các hãng (cách đặt tên giới hạn độ dài, có hỗ trợ chế độ "bắt buộc trả về JSON" hay
+   không, có nhận tham số "độ sáng tạo" hay không, giới hạn tốc độ gọi) được mô tả bằng các **"công tắc" đơn giản**;
+   yêu cầu gửi đi được **lắp ráp linh hoạt** theo những công tắc đó, nên cùng một cơ chế thích ứng được với đặc thù
+   của từng hãng.
+
+Hệ quả: **thêm một mô hình mới để so sánh chỉ tốn vài dòng cấu hình và một khóa API**, trong khi toàn bộ phần còn
+lại của hệ thống giữ nguyên (xem Mục 5).
+
+**(b) Từ đầu ra của mô hình đến bản xem trước.** Mô hình được **yêu cầu trả kết quả theo một định dạng có cấu
+trúc thống nhất** (một khối dữ liệu JSON gồm câu tóm tắt và nội dung tệp `/index.html` tự chứa). Do mô hình ngôn ngữ
+đôi khi trả kèm chú thích thừa hoặc bao quanh bằng ký hiệu định dạng, máy chủ có một bước **"đọc phòng thủ"**: tự
+tách lấy phần dữ liệu hợp lệ, chuẩn hóa lại rồi mới dùng; nếu không đọc được thì **báo lỗi rõ ràng kèm nội dung
+gốc** để dễ kiểm tra (thay vì hỏng âm thầm). Vì website được quy ước gói trong **một trang tự chứa** — toàn bộ
+giao diện, định dạng (CSS) và mã chạy (JavaScript) nằm trong cùng một tệp — trình duyệt có thể **hiển thị ngay**:
+trang được nạp vào một **khung xem cô lập (iframe)** chạy thẳng trong trình duyệt, không cần cài công cụ đóng gói
+hay kết nối dịch vụ bên ngoài. Nhờ đó bản xem trước hiện **tức thì, chạy offline và an toàn khi demo**.
 
 ---
 
@@ -377,4 +444,4 @@ boost/lọc-brand đã dựng sẵn. (4) Re-ranking / tách truy vấn theo sect
 - Đánh giá: `server/scripts/{eval-models,rag-compare,test-judge}.js`, `server/eval-models.config.js`
 - Ảnh kết quả: `results/{qwen,gemini,gpt-oss}/image{1,2}.png`, `results/rag-on-off/{on,off}-{home,schedule}.png`
 - Frontend: `web/src/App.jsx`, `web/src/components/*`, `web/src/monacoSetup.js`
-- Hợp đồng & vận hành: `docs/API_CONTRACT.md`, `README.md`, `CLAUDE.md`
+- Vận hành: `README.md`

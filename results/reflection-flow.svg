@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 375" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="ahB" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#1f2937"/></marker>
+    <marker id="ahR" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#c0392b"/></marker>
+    <marker id="ahG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2e7d32"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="375" fill="#ffffff"/>
+
+  <!-- Reflection container -->
+  <rect x="360" y="120" width="470" height="210" rx="14" fill="#fffdf3" stroke="#d4bf3a" stroke-width="2" stroke-dasharray="8 5"/>
+  <text x="595" y="146" text-anchor="middle" font-size="15" font-weight="700" fill="#8a7400">VÒNG LẶP REFLECTION</text>
+
+  <!-- Nodes -->
+  <g stroke="#1f2937" stroke-width="1.6">
+    <rect x="18"  y="208" width="92"  height="56" rx="10" fill="#ffffff"/>
+    <rect x="150" y="196" width="176" height="80" rx="10" fill="#ffffff"/>
+    <rect x="400" y="200" width="150" height="72" rx="10" fill="#ffffff"/>
+    <rect x="640" y="200" width="150" height="72" rx="10" fill="#ffffff"/>
+    <rect x="880" y="200" width="150" height="72" rx="10" fill="#ffffff"/>
+    <rect x="1066" y="210" width="96" height="52" rx="10" fill="#1f2937"/>
+  </g>
+
+  <!-- Node labels -->
+  <g text-anchor="middle" fill="#1f2937">
+    <text x="64"  y="241" font-size="16" font-weight="600">Mô tả</text>
+
+    <text x="238" y="228" font-size="16" font-weight="600">Truy xuất</text>
+    <text x="238" y="247" font-size="16" font-weight="600">component</text>
+    <text x="238" y="266" font-size="12" fill="#6b7280">RAG Agent</text>
+
+    <text x="475" y="232" font-size="16" font-weight="600">Sinh mã</text>
+    <text x="475" y="252" font-size="13" fill="#6b7280">(Coder)</text>
+
+    <text x="715" y="232" font-size="16" font-weight="600">Phản biện</text>
+    <text x="715" y="252" font-size="13" fill="#6b7280">(Critic)</text>
+
+    <text x="955" y="230" font-size="16" font-weight="600">Hoàn thiện</text>
+    <text x="955" y="249" font-size="12" fill="#6b7280">chèn logo</text>
+
+    <text x="1114" y="241" font-size="16" font-weight="700" fill="#ffffff">website</text>
+  </g>
+
+  <!-- Linear arrows -->
+  <g stroke="#1f2937" stroke-width="1.8" fill="none">
+    <line x1="110" y1="236" x2="146" y2="236" marker-end="url(#ahB)"/>
+    <line x1="326" y1="236" x2="396" y2="236" marker-end="url(#ahB)"/>
+    <line x1="1030" y1="236" x2="1062" y2="236" marker-end="url(#ahB)"/>
+  </g>
+
+  <!-- Coder -> Critic (forward) -->
+  <line x1="550" y1="232" x2="636" y2="232" stroke="#1f2937" stroke-width="1.8" fill="none" marker-end="url(#ahB)"/>
+  <text x="593" y="223" text-anchor="middle" font-size="11.5" fill="#374151">bản nháp / bản sửa</text>
+
+  <!-- Critic -> Coder (loop back, chưa đạt) -->
+  <path d="M715,272 V303 H475 V276" stroke="#c0392b" stroke-width="1.8" fill="none" marker-end="url(#ahR)"/>
+  <text x="595" y="320" text-anchor="middle" font-size="11.5" fill="#c0392b" font-weight="600">CHƯA ĐẠT: phản hồi (lỗi + gợi ý sửa)</text>
+
+  <!-- Critic -> Hoàn thiện (đạt, thoát) -->
+  <line x1="790" y1="236" x2="876" y2="236" stroke="#2e7d32" stroke-width="2" fill="none" marker-end="url(#ahG)"/>
+  <text x="833" y="226" text-anchor="middle" font-size="11.5" fill="#2e7d32" font-weight="700">ĐẠT</text>
+
+  <!-- bottom note -->
+  <text x="595" y="356" text-anchor="middle" font-size="12" fill="#6b7280">ĐẠT = Critic chấp nhận + công cụ kiểm tra sạch lỗi (hoặc hết số vòng) → giữ phiên bản tốt nhất</text>
+</svg>

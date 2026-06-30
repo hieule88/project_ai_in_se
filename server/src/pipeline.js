@@ -1,6 +1,6 @@
 import { qwenChat } from './qwenClient.js';
 import { parseProject } from './parser.js';
-import { buildGenerateMessages, buildEditMessages, buildFixMessages, BRAND_LOGO_PLACEHOLDER } from './prompts/codegen.js';
+import { buildGenerateMessages, buildEditMessages, buildCritiqueMessages, buildReviseMessages, BRAND_LOGO_PLACEHOLDER } from './prompts/codegen.js';
 import { retrieveComponents, ragEnabled } from './rag/retrieve.js';
 import { reviewProject, summarizeIssues } from './review.js';
 import { getBrand } from './brands.js';
@@ -71,47 +71,91 @@ function restoreDataUris(files, map) {
   });
 }
 
-/**
- * Review Agent: soát HTML, nếu có lỗi thì gọi model sửa 1 vòng (nếu bật autofix).
- * Luôn TRẢ VỀ project (đã sửa nếu sửa được) và PUSH 1 agentStep 'review' vào `steps`.
- * Không bao giờ chặn pipeline — lỗi gọi model khi sửa cũng chỉ ghi chú rồi giữ bản gốc.
- */
-async function runReview(project, language, steps, llm = {}) {
-  if (!reviewEnabled()) {
-    steps.push({ agent: 'review', status: 'skipped', summary: 'Review tắt (REVIEW_ENABLED=0)' });
-    return project;
-  }
-
-  const review = reviewProject(project);
-  if (review.ok) {
-    const note = review.warnings.length ? ` (${review.warnings.length} cảnh báo)` : '';
-    steps.push({ agent: 'review', status: 'done', summary: `HTML hợp lệ${note}` });
-    return project;
-  }
-
-  // Có lỗi.
-  if (!autofixEnabled()) {
-    steps.push({ agent: 'review', status: 'error', summary: `Phát hiện lỗi (không tự sửa): ${summarizeIssues(review.errors)}` });
-    return project;
-  }
-
-  // Gọi model sửa 1 vòng.
+/** Bóc JSON phê bình của Critic: { acceptable, issues[], suggestions[] }. */
+function parseCritique(raw) {
+  const m = raw && raw.match(/\{[\s\S]*\}/);
+  if (!m) return null;
   try {
-    const fixMessages = buildFixMessages({ files: project.files, issues: review.errors, language });
-    const fixed = parseProject(await qwenChat(fixMessages, llm));
-    const after = reviewProject(fixed);
-    if (after.ok) {
-      steps.push({ agent: 'review', status: 'done', summary: `Phát hiện ${review.errors.length} lỗi → đã sửa 1 vòng, HTML hợp lệ` });
-      return fixed;
-    }
-    // Sửa rồi vẫn còn lỗi → vẫn dùng bản đã sửa (thường tốt hơn bản gốc), ghi chú lại.
-    steps.push({ agent: 'review', status: 'error', summary: `Đã sửa 1 vòng nhưng còn: ${summarizeIssues(after.errors)}` });
-    return fixed;
-  } catch (err) {
-    console.warn('[review] sửa lỗi thất bại, giữ bản gốc:', err.message);
-    steps.push({ agent: 'review', status: 'error', summary: `Lỗi khi sửa (giữ bản gốc): ${err.message}` });
+    const o = JSON.parse(m[0]);
+    return {
+      acceptable: !!o.acceptable,
+      issues: Array.isArray(o.issues) ? o.issues.map(String).slice(0, 8) : [],
+      suggestions: Array.isArray(o.suggestions) ? o.suggestions.map(String).slice(0, 8) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * REFLECTION (Coder ↔ Critic) — vòng lặp tự cải thiện theo phương pháp Reflection:
+ *   sinh → Critic TỰ PHÊ BÌNH (LLM, có cấu trúc) + công cụ kiểm tĩnh → Coder CHỈNH SỬA → lặp lại.
+ * Dừng khi Critic CHẤP NHẬN và công cụ sạch lỗi, hoặc hết REVIEW_MAX_ROUNDS (mặc định 2).
+ * Công cụ kiểm tĩnh là "sự thật cứng": còn lỗi error thì không bao giờ coi là đạt.
+ * Luôn giữ & trả về bản TỐT NHẤT (ít lỗi tĩnh nhất); không bao giờ chặn pipeline.
+ *
+ * Cấu hình: REVIEW_ENABLED, REVIEW_AUTOFIX, REVIEW_MAX_ROUNDS, REVIEW_USE_LLM_CRITIC (=0 để tắt Critic LLM, rẻ hơn).
+ */
+async function runReflection({ project, task, language = 'vi', steps, llm = {} }) {
+  if (!reviewEnabled()) {
+    steps.push({ agent: 'critic', status: 'skipped', summary: 'Review tắt (REVIEW_ENABLED=0)' });
     return project;
   }
+  const maxRounds = Math.max(1, Number(process.env.REVIEW_MAX_ROUNDS) || 2);
+  const useLlmCritic = process.env.REVIEW_USE_LLM_CRITIC !== '0';
+  const autofix = autofixEnabled();
+
+  let best = project;
+  let bestErrs = reviewProject(project).errors.length;
+
+  for (let round = 1; round <= maxRounds; round++) {
+    const tool = reviewProject(project);
+
+    // --- Critic: tự phê bình có cấu trúc (LLM) dựa trên cả báo cáo công cụ kiểm tĩnh ---
+    let critique = { acceptable: tool.ok, issues: tool.errors.map((e) => e.message), suggestions: [] };
+    if (useLlmCritic) {
+      try {
+        const raw = await qwenChat(buildCritiqueMessages({ task, files: project.files, toolReport: tool, language }), llm);
+        const parsed = parseCritique(raw);
+        // Công cụ tĩnh là sự thật cứng: còn lỗi error thì KHÔNG thể "đạt" dù Critic nói gì.
+        if (parsed) critique = { ...parsed, acceptable: parsed.acceptable && tool.ok };
+      } catch (e) {
+        steps.push({ agent: 'critic', status: 'error', summary: `Vòng ${round}: lỗi gọi Critic LLM (dùng kiểm tĩnh): ${e.message}` });
+      }
+    }
+
+    const accept = tool.ok && critique.acceptable;
+    steps.push({
+      agent: 'critic',
+      status: accept ? 'done' : 'error',
+      summary: accept
+        ? `Vòng ${round}: đạt yêu cầu — không còn lỗi đáng kể`
+        : `Vòng ${round}: cần cải thiện — ${critique.issues[0] || summarizeIssues(tool.errors) || 'theo phản hồi Critic'}`,
+    });
+
+    if (accept) {
+      best = project;
+      break;
+    }
+    if (round === maxRounds || !autofix) break;
+
+    // --- Coder: chỉnh sửa theo feedback của Critic ---
+    try {
+      const revised = parseProject(await qwenChat(buildReviseMessages({ files: project.files, critique, language }), llm));
+      const errs = reviewProject(revised).errors.length;
+      steps.push({ agent: 'coder', status: 'done', summary: `Vòng ${round}: chỉnh sửa theo phản hồi (còn ${errs} lỗi tĩnh)` });
+      project = revised;
+      if (errs <= bestErrs) {
+        best = revised;
+        bestErrs = errs;
+      }
+    } catch (e) {
+      console.warn('[reflection] chỉnh sửa thất bại, giữ bản tốt nhất:', e.message);
+      steps.push({ agent: 'coder', status: 'error', summary: `Vòng ${round}: chỉnh sửa thất bại, giữ bản tốt nhất: ${e.message}` });
+      break;
+    }
+  }
+  return best;
 }
 
 /**
@@ -164,8 +208,8 @@ export async function runGenerate({ description, language = 'vi', brandId = null
   let project = parseProject(raw);
   steps.push({ agent: 'code', status: 'done', summary: `Sinh ${project.files.length} file` });
 
-  // 4) Review Agent — soát HTML, tự sửa 1 vòng nếu có lỗi.
-  project = await runReview(project, language, steps, llm);
+  // 4) Reflection (Coder ↔ Critic) — tự phê bình & chỉnh sửa lặp lại.
+  project = await runReflection({ project, task: description, language, steps, llm });
 
   // 5) Chèn logo brand thật vào (thay placeholder) — sau review để fix không xoá mất.
   project = inlineBrandLogo(project, brand);
@@ -191,8 +235,8 @@ export async function runEdit({ files, instruction, language = 'vi' }) {
   project.files = restoreDataUris(project.files, map);
   steps.push({ agent: 'code', status: 'done', summary: `Cập nhật ${project.files.length} file` });
 
-  // Review cả khi chỉnh sửa — bắt trường hợp sửa làm hỏng HTML.
-  project = await runReview(project, language, steps);
+  // Reflection cả khi chỉnh sửa — bắt trường hợp sửa làm hỏng HTML.
+  project = await runReflection({ project, task: instruction, language, steps });
 
   return {
     ...project,
